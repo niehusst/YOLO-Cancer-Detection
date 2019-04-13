@@ -1,5 +1,4 @@
 import pandas as pd
-import numpy as np
 
 # A quick script to clean unnecessary columns out of the raw 
 # CCC dataset from Kaggle
@@ -12,7 +11,7 @@ CCC["imgPath"] = CCC['patientID'].map(str) + '/' + \
                 CCC['seriesUID'].map(str) + '/' +  \
                 CCC['sliceIndex'].map(str) + '/'
 
-# chop out unnecessary columns
+# chop out columns we won't need for simple object detector
 columns_to_drop = ['order', 'anatomy', 'patientID', 'seriesUID', 'sliceIndex', 'StudyTime', 'SOPClassUID', 'instanceUID', 'length','annotator', 'radiologist_status', 'date_unix', 'date', 'StudyInstanceUID', 'StudyDate', 'StudyTime', '_id']
 
 CCC.drop(columns_to_drop, inplace=True, axis=1)

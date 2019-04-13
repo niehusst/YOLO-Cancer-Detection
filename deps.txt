@@ -5,4 +5,5 @@ pillow
 tensorflow_datasets
 sklearn
 pandas
+pydicom
 
