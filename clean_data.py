@@ -9,7 +9,7 @@ CCC = pd.read_csv('CrowdsCureCancer2017Annotations.csv')
 # create a column that is the image path for each row
 CCC["imgPath"] = CCC['patientID'].map(str) + '/' + \
                 CCC['seriesUID'].map(str) + '/' +  \
-                CCC['sliceIndex'].map(str) + '/'
+                CCC['sliceIndex'].map(str) 
 
 # chop out columns we won't need for simple object detector
 columns_to_drop = ['order', 'anatomy', 'patientID', 'seriesUID', 'sliceIndex', 'StudyTime', 'SOPClassUID', 'instanceUID', 'length','annotator', 'radiologist_status', 'date_unix', 'date', 'StudyInstanceUID', 'StudyDate', 'StudyTime', '_id']
