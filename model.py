@@ -26,16 +26,34 @@ tqdm.tqdm = tqdm.auto.tqdm
 tf.enable_eager_execution() #comment this out if causing errors
 
 ###       GET THE DATASET AND FIX IT UP A BIT       ###
-# relative paths to data
+# relative paths to data and labels
 CSV_PATH = 'CCC_clean.csv'
-IMAGE_PATH = '../data/'
+IMAGE_BASE_PATH = '../data/'
 
-dataset = tf.contrib.data.make_csv_dataset(CSV_PATH, batch_size=32)
+data_frame = pd.read_csv(CSV_PATH)
+
+# zip points data together                        TODO: is this really what we want to do???
+train_points = zip(data_frame['start_x'], data_frame['start_y'], \
+                       data_frame['end_x'], data_frame['end_y'])
+train_img_paths = data_frame['imgPath']
+
+# turn arrays into tf dataset
+dataset = tf.data.Dataset.from_tensor_slices((train_points, train_img_paths)) 
+
+# do some preprocessing of the data
+def path_to_image(points, path):
+    #load image from path as numpy array
+    image = pdcm.dcmread(path).pixel_array
+    
+    return points, image
+
+
+dataset.map(path_to_image)
+
+# make iterator from dataset
 iter = dataset.make_one_shot_iterator()
-next = iter.next()
 
-# how to load an image
-rel_path = '/home/niehusst/vision262/project/TCGA-09-0364/1.3.6.1.4.1.14519.5.2.1.7695.4007.115512319570807352125051359179/42'
-matrix = pdcm.dcmread(rel_path).pixel_array
+
+
 
 
