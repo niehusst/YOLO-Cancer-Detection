@@ -120,8 +120,18 @@ model = tf.keras.Sequential([
 
     tf.keras.layers.Flatten(), #flatten images into array for the fully connnected layers
     tf.keras.layers.Dense(1024, activation=tf.nn.relu),
-    tf.keras.layers.Dense(4096, activation=tf.nn.relu)
+    tf.keras.layers.Dense(4096, activation=tf.nn.linear)
 ])
+"""
+Our final layer predicts both class probabilities and
+bounding box coordinates. We normalize the bounding box
+width and height by the image width and height so that they
+fall between 0 and 1. 
+
+We use a linear activation function for the final layer and
+all other layers use the following leaky rectified linear activation:
+x if x>0 else 0.1*x
+"""
 
 model.compile(optimizer='adam',
               loss='sparse_categorical_crossentropy',
@@ -136,4 +146,12 @@ num_epochs = 1
 model.fit(dataset, epochs=num_epochs, steps_per_epoch=num_train_examples)
 
 
+"""
+NOTES:
+use tf.image.nonMaxSuppression (perform non max sup on of bounding boxes of intersection over the union)
 
+use tf.image.draw_bounding_boxes (draws bb points on images in passed in tensor objects of pts and imgs)
+
+
+
+"""
