@@ -84,7 +84,43 @@ print("Data preprocessing complete\n")
 
 model = tf.keras.Sequential([
     tf.keras.layers.Conv2D(64, (7, 7), padding='same', activation=tf.nn.relu,
-                               input_shape=(512, 512, 1))
+                               strides=2, input_shape=(512, 512, 1)),
+    tf.keras.layers.MaxPooling2D((2,2), strides=2),
+    
+    tf.keras.layers.Conv2D(192, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.MaxPooling2D((2,2), strides=2),
+    
+    tf.keras.layers.Conv2D(128, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(256, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.MaxPooling2D((2,2), strides=2),
+
+    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.MaxPooling2D((2,2), strides=2),
+
+    tf.keras.layers.Conv2D(512, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', strides=2, activation=tf.nn.relu),
+
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
+
+    tf.keras.layers.Flatten(), #flatten images into array for the fully connnected layers
+    tf.keras.layers.Dense(1024, activation=tf.nn.relu),
+    tf.keras.layers.Dense(4096, activation=tf.nn.relu)
 ])
 
 model.compile(optimizer='adam',
