@@ -20,9 +20,14 @@ import tqdm.auto
 tqdm.tqdm = tqdm.auto.tqdm
 
 # allow for dataset iteration. 
-tf.enable_eager_execution() #comment this out if causing errors
+#tf.enable_eager_execution() #comment this out if causing errors
 
-###       GET THE DATASET AND FIX IT UP A BIT       ###
+tf.logging.set_verbosity(tf.logging.DEBUG)
+
+
+
+###         GET THE DATASET AND PREPROCESS IT        ###
+
 # relative paths to data and labels
 CSV_PATH = 'CCC_clean.csv'
 IMAGE_BASE_PATH = '../data/'
@@ -66,17 +71,10 @@ train_points = map(normalize_points, train_points)
 train_imgs = map(path_to_image, train_img_paths) 
 train_imgs = map(normalize_image, train_imgs)
 
-# turn arrays into tf dataset #causes use of >10% system memory???
-#dataset = tf.data.Dataset.from_tensor_slices((train_points, train_imgs)).repeat().batch(1)
-
-
 print("Data preprocessing complete\n")
 
-# make iterator from dataset that can be used to train the model
-#iter = dataset.make_one_shot_iterator()
 
-
-### MODEL
+###            DEFINITION OF MODEL SHAPE             ###
 
 model = tf.keras.Sequential([
     tf.keras.layers.Conv2D(64, (7, 7), padding='same', activation=tf.nn.leaky_relu,
@@ -136,6 +134,9 @@ model.compile(optimizer='adam',
               loss='sparse_categorical_crossentropy', #TODO: implement YOLO loss(sum-squared error)
               metrics=['accuracy'])
 
+
+
+###                   TRAIN THE MODEL                ###
 """
 We train the network for about 135 epochs(thats a lot, they required dropout and data aug).
 Throughout training we use a batch size of 64, a momentum of 0.9 and a decay of 0.0005.
@@ -160,7 +161,7 @@ print('out is {}'.format(output))
 print('fitting the model\n')
 num_epochs = 1
 model.fit(np.expand_dims(train_imgs[0], axis=0), train_points[0], epochs=num_epochs, batch_size=BATCH_SIZE, \
-    steps_per_epoch=num_train_examples)
+    steps_per_epoch=math.ceil(num_train_examples / BATCH_SIZE))
 
 """
 NOTES:
@@ -169,3 +170,9 @@ use tf.image.nonMaxSuppression (perform non max sup on of bounding boxes of inte
 use tf.image.draw_bounding_boxes (draws bb points on images in passed in tensor objects of pts and imgs)
 
 """
+
+###                 EVALUATE THE MODEL               ###
+
+#TODO: replace train_imgs with testing dataset
+loss, accuray = model.evaluate(train_imgs, steps=math.ceil(num_train_examples/BATCH_SIZE))
+
