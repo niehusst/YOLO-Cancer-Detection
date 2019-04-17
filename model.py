@@ -153,9 +153,13 @@ train_imgs = np.array(train_imgs)
 train_points = np.array(train_points)
 train_imgs = train_imgs.reshape(-1, 512, 512, 1)
 
+print('making a prediction\n') #try running some test data through the model (untrained) to see if the info it gives back is any more useful for debugging than 
+output = model.predict(np.expand_dims(train_imgs[0], axis=0), batch_size=BATCH_SIZE)
+print('out is {}'.format(output))
+
 print('fitting the model\n')
 num_epochs = 1
-model.fit(train_imgs, train_points, epochs=num_epochs, batch_size=BATCH_SIZE, \
+model.fit(np.expand_dims(train_imgs[0], axis=0), train_points[0], epochs=num_epochs, batch_size=BATCH_SIZE, \
     steps_per_epoch=num_train_examples)
 
 """
@@ -163,7 +167,5 @@ NOTES:
 use tf.image.nonMaxSuppression (perform non max sup on of bounding boxes of intersection over the union)
 
 use tf.image.draw_bounding_boxes (draws bb points on images in passed in tensor objects of pts and imgs)
-
-
 
 """
