@@ -3,7 +3,7 @@
 An implementation of the YOLO algorithm trained to spot tumors in DICOM images. The model is trained on the "Crowds Cure Cancer" dataset, which only contains images that DO have tumors; this model will always predict a bounding box for a tumor (even if one is not present).
 
 ### Getting Started
-We recommend using a virtual environment to ensure your dependencies are up-to-date and freshly installed. From there, you can use `pip` to install all the dependencies in the `requirements.txt` file.
+We recommend using a virtual environment to ensure your dependencies are up-to-date and freshly installed. From there, you can use `pip` to install all the dependencies in the `deps.txt` file.
 
 ## Authors
 * **Liam Niehus-Staab** - [niehusst](https://github.com/niehusst)
