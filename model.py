@@ -23,9 +23,12 @@ tqdm.tqdm = tqdm.auto.tqdm
 #tf.enable_eager_execution() #comment this out if causing errors
 
 tf.logging.set_verbosity(tf.logging.DEBUG)
-
-
-
+"""
+possible causes for squeeze error:
+OOM is actually the root cause, but squeeze just arises from it
+something to do with collecting accuracy metrics: possibly model is expecting train labels to be scalar?
+how do predictions/labels look for other people doing this??
+"""
 ###         GET THE DATASET AND PREPROCESS IT        ###
 
 # relative paths to data and labels
@@ -70,6 +73,12 @@ def normalize_points(points):
 train_points = map(normalize_points, train_points)
 train_imgs = map(path_to_image, train_img_paths) 
 train_imgs = map(normalize_image, train_imgs)
+#poop = np.array(range(len(train_points)))
+
+
+print(np.array(train_points).shape)
+print(train_points[0])
+print(np.array(train_points[1:3]).shape)
 
 print("Data preprocessing complete\n")
 
@@ -113,9 +122,9 @@ model = tf.keras.Sequential([
     tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.leaky_relu),
 
     tf.keras.layers.Flatten(), #flatten images into array for the fully connnected layers
-    tf.keras.layers.Dense(1024, activation=tf.nn.leaky_relu),
+#    tf.keras.layers.Dense(1024, activation=tf.nn.leaky_relu),
     #tf.keras.layers.Dropout(0.5), # prevents overfitting for large number of epochs?
-    tf.keras.layers.Dense(4096, activation=tf.keras.activations.linear),
+#    tf.keras.layers.Dense(4096, activation=tf.keras.activations.linear),
     tf.keras.layers.Dense(4) # 4 outputs: predict 4 points for a bounding box
 ])
 """
@@ -129,12 +138,12 @@ all other layers use the following leaky rectified linear activation:
 x if x>0 else 0.1*x
 (i think tf.nn.leaky_relu has default of 0.2 instead of 0.1)
 """
-
+run_opts = tf.RunOptions(report_tensor_allocations_upon_oom = True)
 model.compile(optimizer='adam', 
-              loss='sparse_categorical_crossentropy', #TODO: implement YOLO loss(sum-squared error)
-              metrics=['accuracy'])
+              loss='mean_squared_error') #TODO: implement YOLO loss(sum-squared error)
+             # metrics=['accuracy'])#, options=run_opts)
 
-
+#print(model.summary())
 
 ###                   TRAIN THE MODEL                ###
 """
@@ -155,13 +164,15 @@ train_points = np.array(train_points)
 train_imgs = train_imgs.reshape(-1, 512, 512, 1)
 
 print('making a prediction\n') #try running some test data through the model (untrained) to see if the info it gives back is any more useful for debugging than 
-output = model.predict(np.expand_dims(train_imgs[0], axis=0), batch_size=BATCH_SIZE)
+output = model.predict(train_imgs[0:2], batch_size=BATCH_SIZE)
 print('out is {}'.format(output))
 
 print('fitting the model\n')
 num_epochs = 1
-model.fit(np.expand_dims(train_imgs[0], axis=0), train_points[0], epochs=num_epochs, batch_size=BATCH_SIZE, \
-    steps_per_epoch=math.ceil(num_train_examples / BATCH_SIZE))
+print(np.array(train_points[0:2]).shape)
+print(np.array(train_imgs[0:2]).shape)
+model.fit(train_imgs, train_points, epochs=num_epochs, batch_size=BATCH_SIZE, \
+    steps_per_epoch=(num_train_examples // BATCH_SIZE))
 
 """
 NOTES:
@@ -174,5 +185,5 @@ use tf.image.draw_bounding_boxes (draws bb points on images in passed in tensor 
 ###                 EVALUATE THE MODEL               ###
 
 #TODO: replace train_imgs with testing dataset
-loss, accuray = model.evaluate(train_imgs, steps=math.ceil(num_train_examples/BATCH_SIZE))
+loss, accuray = model.evaluate(train_imgs, steps=(num_train_examples // BATCH_SIZE))
 
