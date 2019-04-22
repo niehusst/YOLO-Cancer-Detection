@@ -10,6 +10,7 @@ import pandas as pd
 import pydicom as pdcm
 import os
 import random
+from keras.preprocessing.image import ImageDataGenerator
 
 # Imports for dataset separation
 from sklearn.model_selection import train_test_split
@@ -20,14 +21,16 @@ import tqdm.auto
 tqdm.tqdm = tqdm.auto.tqdm
 
 # allow for dataset iteration. 
-#tf.enable_eager_execution() #comment this out if causing errors
+tf.enable_eager_execution() #comment this out if causing errors
 
 tf.logging.set_verbosity(tf.logging.DEBUG)
 """
-possible causes for squeeze error:
-OOM is actually the root cause, but squeeze just arises from it
-something to do with collecting accuracy metrics: possibly model is expecting train labels to be scalar?
-how do predictions/labels look for other people doing this??
+#### possible causes for error:
+
+OOM is caused by failure to batch correctly?
+why does it succeed at training with only 2 examples but fails to train with whole dataset w/ same batch size?
+try using a generator?
+
 """
 ###         GET THE DATASET AND PREPROCESS IT        ###
 
@@ -73,12 +76,12 @@ def normalize_points(points):
 train_points = map(normalize_points, train_points)
 train_imgs = map(path_to_image, train_img_paths) 
 train_imgs = map(normalize_image, train_imgs)
-#poop = np.array(range(len(train_points)))
 
+# create generator for training the model in batches
+generator = ImageDataGenerator(rotation_range=0, zoom_range=0,
+	width_shift_range=0, height_shift_range=0, shear_range=0,
+	horizontal_flip=False, fill_mode="nearest")
 
-print(np.array(train_points).shape)
-print(train_points[0])
-print(np.array(train_points[1:3]).shape)
 
 print("Data preprocessing complete\n")
 
@@ -122,7 +125,7 @@ model = tf.keras.Sequential([
     tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.leaky_relu),
 
     tf.keras.layers.Flatten(), #flatten images into array for the fully connnected layers
-#    tf.keras.layers.Dense(1024, activation=tf.nn.leaky_relu),
+    tf.keras.layers.Dense(1024, activation=tf.nn.sigmoid),
     #tf.keras.layers.Dropout(0.5), # prevents overfitting for large number of epochs?
 #    tf.keras.layers.Dense(4096, activation=tf.keras.activations.linear),
     tf.keras.layers.Dense(4) # 4 outputs: predict 4 points for a bounding box
@@ -133,15 +136,23 @@ bounding box coordinates. We normalize the bounding box
 width and height by the image width and height so that they
 fall between 0 and 1. 
 
-We use a linear activation function for the final layer and
+We use a sigmoid activation function for the final layer to facilitate
+learning of the  normalized range of the output.
 all other layers use the following leaky rectified linear activation:
 x if x>0 else 0.1*x
 (i think tf.nn.leaky_relu has default of 0.2 instead of 0.1)
 """
-run_opts = tf.RunOptions(report_tensor_allocations_upon_oom = True)
+
+# custom loss function using aspects of relevant information from the YOLO paper
+# y_true and y_pred are tf tensors
+def YOLO_loss(y_true, y_pred):
+    #TODO: implement me!!! (sum squared error)
+    pass
+
+#TODO: adjust parameters for adam optimizer; change learning rate?
 model.compile(optimizer='adam', 
-              loss='mean_squared_error') #TODO: implement YOLO loss(sum-squared error)
-             # metrics=['accuracy'])#, options=run_opts)
+              loss='mean_squared_error', 
+              metrics=['accuracy'])
 
 #print(model.summary())
 
@@ -157,6 +168,7 @@ We continue training with 10e-2 for 75 epochs, then 10e-3 for 30 epochs,
 and finally 10e-4 for 30 epochs
 """
 BATCH_SIZE = 1
+num_epochs = 1
 
 # reshape training images to expected 4D shape
 train_imgs = np.array(train_imgs)
@@ -168,10 +180,10 @@ output = model.predict(train_imgs[0:2], batch_size=BATCH_SIZE)
 print('out is {}'.format(output))
 
 print('fitting the model\n')
-num_epochs = 1
+
 print(np.array(train_points[0:2]).shape)
 print(np.array(train_imgs[0:2]).shape)
-model.fit(train_imgs, train_points, epochs=num_epochs, batch_size=BATCH_SIZE, \
+model.fit_generator(generator.flow(train_imgs, train_points, batch_size=BATCH_SIZE), epochs=num_epochs, \
     steps_per_epoch=(num_train_examples // BATCH_SIZE))
 
 """
