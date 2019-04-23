@@ -43,14 +43,14 @@ print("Loading and processing data\n")
 data_frame = pd.read_csv(CSV_PATH)
 
 # zip points data together                        TODO: is this what data should contain???
-train_points = zip(data_frame['start_x'], data_frame['start_y'], \
+points = zip(data_frame['start_x'], data_frame['start_y'], \
                        data_frame['end_x'], data_frame['end_y'])
-train_img_paths = data_frame['imgPath']
+img_paths = data_frame['imgPath']
 # TODO: add class label for all the data (each should just be 1 (aka cancer) since we
 # are not doing classification)
-# try to classify the area of the body the tumor was in too???? using 'anatomy' col of 
+# try to classify the area of the body the tumor was in too???? using 'anatomy' col 
 
-num_train_examples = len(data_frame['imgPath'])
+
 
 # do some preprocessing of the data
 def path_to_image(path):
@@ -73,9 +73,25 @@ def normalize_points(points):
         points[i] /= imDims
     return np.array(points).astype(np.float32)
 
-train_points = map(normalize_points, train_points)
-train_imgs = map(path_to_image, train_img_paths) 
-train_imgs = map(normalize_image, train_imgs)
+# apply preprocessing functions
+points = map(normalize_points, points)
+imgs = map(path_to_image, img_paths) 
+imgs = map(normalize_image, imgs)
+
+# reshape input image data to expected 4D shape and cast all data to np arrays
+imgs = np.array(imgs)
+points = np.array(points)
+imgs = imgs.reshape(-1, 512, 512, 1)
+
+# split the preprocessed data into train and test
+train_imgs, test_imgs, train_points, test_points = \
+  train_test_split(imgs, points, test_size=0.15, random_state=42)
+
+num_train_examples = len(train_imgs)
+num_test_examples = len(test_imgs)
+n_tr_labs = len(train_points)
+n_te_labs = len(test_points)
+print("training with {}+{} and testing with {}+{}".format(num_train_examples, n_tr_labs, num_test_examples, n_te_labs))
 
 # create generator for training the model in batches
 generator = ImageDataGenerator(rotation_range=0, zoom_range=0,
@@ -125,10 +141,10 @@ model = tf.keras.Sequential([
     tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.leaky_relu),
 
     tf.keras.layers.Flatten(), #flatten images into array for the fully connnected layers
-    tf.keras.layers.Dense(1024, activation=tf.nn.sigmoid),
+#    tf.keras.layers.Dense(1024, activation=tf.nn.sigmoid),
     #tf.keras.layers.Dropout(0.5), # prevents overfitting for large number of epochs?
 #    tf.keras.layers.Dense(4096, activation=tf.keras.activations.linear),
-    tf.keras.layers.Dense(4) # 4 outputs: predict 4 points for a bounding box
+    tf.keras.layers.Dense(4, activation=tf.nn.sigmoid) # 4 outputs: predict 4 points for a bounding box
 ])
 """
 Our final layer predicts both class probabilities and
@@ -156,6 +172,7 @@ model.compile(optimizer='adam',
 
 #print(model.summary())
 
+
 ###                   TRAIN THE MODEL                ###
 """
 We train the network for about 135 epochs(thats a lot, they required dropout and data aug).
@@ -167,22 +184,11 @@ high learning rate our model often diverges due to unstable gradients.
 We continue training with 10e-2 for 75 epochs, then 10e-3 for 30 epochs, 
 and finally 10e-4 for 30 epochs
 """
-BATCH_SIZE = 1
+BATCH_SIZE = 5
 num_epochs = 1
 
-# reshape training images to expected 4D shape
-train_imgs = np.array(train_imgs)
-train_points = np.array(train_points)
-train_imgs = train_imgs.reshape(-1, 512, 512, 1)
-
-print('making a prediction\n') #try running some test data through the model (untrained) to see if the info it gives back is any more useful for debugging than 
-output = model.predict(train_imgs[0:2], batch_size=BATCH_SIZE)
-print('out is {}'.format(output))
 
 print('fitting the model\n')
-
-print(np.array(train_points[0:2]).shape)
-print(np.array(train_imgs[0:2]).shape)
 model.fit_generator(generator.flow(train_imgs, train_points, batch_size=BATCH_SIZE), epochs=num_epochs, \
     steps_per_epoch=(num_train_examples // BATCH_SIZE))
 
@@ -194,8 +200,13 @@ use tf.image.draw_bounding_boxes (draws bb points on images in passed in tensor 
 
 """
 
+
 ###                 EVALUATE THE MODEL               ###
 
 #TODO: replace train_imgs with testing dataset
-loss, accuray = model.evaluate(train_imgs, steps=(num_train_examples // BATCH_SIZE))
+loss, accuray = model.evaluate(test_imgs, test_points)
 
+
+print('making a prediction\n') 
+output = model.predict(train_imgs[0:2], batch_size=BATCH_SIZE)
+print('out is {}'.format(output))
