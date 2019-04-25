@@ -164,24 +164,43 @@ def YOLO_loss(y_true, y_pred):
 
     #TODO: Need to use keras backend for arithmetic operations
     #      on tf Tensors
-    # intersection = (x_RP-x_LT)*(y_LP-y_UT)
-    # union_double = (x_RP-x_LP)*(y_LP-y_UP) + (x_RT-x_LT)*(y_LT-y_UT)
-    # union = union_double - intersection
-    # loss = intersection / union
+
+    lambda_coord = 5
+
+    x_Pmid = tf.math.add(x_LP, tf.math.divide(tf.math.subtract(x_RP, x_LP), 2))
+    x_Tmid = tf.math.add(x_LT, tf.math.divide(tf.math.subtract(x_RT, x_LT), 2))
+    y_Pmid = tf.math.add(y_UP, tf.math.divide(tf.math.subtract(y_LP, y_UP), 2))
+    y_Tmid = tf.math.add(y_UT, tf.math.divide(tf.math.subtract(y_LT, y_UT), 2))
+
+    x_mid_sqdiff = tf.math.square(tf.math.subtract(x_Pmid, x_Tmid))
+    y_mid_sqdiff = tf.math.square(tf.math.subtract(y_Pmid, y_Tmid))
+    first_term = tf.math.add(x_mid_sqdiff, y_mid_sqdiff)
+
+    x_Pwidth = tf.math.sqrt(tf.math.abs(tf.math.subtract(x_RP, x_LP)))
+    x_Twidth = tf.math.sqrt(tf.math.abs(tf.math.subtract(x_RT, x_LT)))
+    y_Pheight = tf.math.sqrt(tf.math.abs(tf.math.subtract(y_UP, y_LP)))
+    y_Theight = tf.math.sqrt(tf.math.abs(tf.math.subtract(y_UT, y_LT)))
+
+
+
+    second_term = tf.math.add(tf.math.square(tf.math.subtract(x_Pwidth,  x_Twidth)),
+                              tf.math.square(tf.math.subtract(y_Pheight, y_Theight)))
+
+
 
     intersection = tf.math.multiply(tf.math.subtract(x_RP, x_LT), tf.math.subtract(y_LP, y_UT))
     union_double = tf.math.add(tf.math.multiply(tf.math.subtract(x_RP, x_LP), tf.math.subtract(y_LP,y_UP)),
                                tf.math.multiply(tf.math.subtract(x_RT, x_LT), tf.math.subtract(y_LT, y_UT)))
     union = tf.math.subtract(union_double, intersection)
-    loss = tf.math.divide(intersection, union)
+    iou = tf.math.divide(intersection, union)
+
+    loss = tf.math.add(tf.math.multiply(tf.math.add(first_term, second_term), lambda_coord), iou)
 
     return loss
 
 
 #TODO: adjust parameters for adam optimizer; change learning rate?
-model.compile(optimizer='adam',
-              loss=YOLO_loss,
-              metrics=['accuracy'])
+model.compile(optimizer='adam',loss=YOLO_loss, metrics=['accuracy'])
 
 #print(model.summary())
 
