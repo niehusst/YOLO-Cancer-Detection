@@ -164,10 +164,16 @@ def YOLO_loss(y_true, y_pred):
 
     #TODO: Need to use keras backend for arithmetic operations
     #      on tf Tensors
-    intersection = (x_RP-x_LT)*(y_LP-y_UT)
-    union_double = (x_RP-x_LP)*(y_LP-y_UP) + (x_RT-x_LT)*(y_LT-y_UT)
-    union = union_double - intersection
-    loss = intersection / union
+    # intersection = (x_RP-x_LT)*(y_LP-y_UT)
+    # union_double = (x_RP-x_LP)*(y_LP-y_UP) + (x_RT-x_LT)*(y_LT-y_UT)
+    # union = union_double - intersection
+    # loss = intersection / union
+
+    intersection = tf.math.multiply(tf.math.subtract(x_RP, x_LT), tf.math.subtract(y_LP, y_UT))
+    union_double = tf.math.add(tf.math.multiply(tf.math.subtract(x_RP, x_LP), tf.math.subtract(y_LP,y_UP)),
+                               tf.math.multiply(tf.math.subtract(x_RT, x_LT), tf.math.subtract(y_LT, y_UT)))
+    union = tf.math.subtract(union_double, intersection)
+    loss = tf.math.divide(intersection, union)
 
     return loss
 
