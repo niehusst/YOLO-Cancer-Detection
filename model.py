@@ -1,40 +1,32 @@
 # Import tensorflow 
 import tensorflow as tf
 import tensorflow_datasets as tfds
-tf.logging.set_verbosity(tf.logging.ERROR)
 
 # Helper libraries
 import math
 import numpy as np
 import pandas as pd
-import pydicom as pdcm
+import pydicom
 import os
 import random
-from keras.preprocessing.image import ImageDataGenerator
 
-# Imports for dataset separation
+# Imports for dataset manipulation
 from sklearn.model_selection import train_test_split
+from keras.preprocessing.image import ImageDataGenerator
 
 # Improve progress bar display
 import tqdm
 import tqdm.auto
 tqdm.tqdm = tqdm.auto.tqdm
 
-# allow for dataset iteration. 
+ 
 tf.enable_eager_execution() #comment this out if causing errors
-
 tf.logging.set_verbosity(tf.logging.DEBUG)
-"""
-#### possible causes for error:
 
-OOM is caused by failure to batch correctly?
-why does it succeed at training with only 2 examples but fails to train with whole dataset w/ same batch size?
-try using a generator?
 
-"""
 ###         GET THE DATASET AND PREPROCESS IT        ###
 
-# relative paths to data and labels
+# relative paths to image data and labels
 CSV_PATH = 'CCC_clean.csv'
 IMAGE_BASE_PATH = '../data/'
 
@@ -42,12 +34,10 @@ print("Loading and processing data\n")
 
 data_frame = pd.read_csv(CSV_PATH)
 
-# zip points data together                        TODO: is this what data should contain???
+# zip points data together
 points = zip(data_frame['start_x'], data_frame['start_y'], \
                        data_frame['end_x'], data_frame['end_y'])
 img_paths = data_frame['imgPath']
-# TODO: add class label for all the data (each should just be 1 (aka cancer) since we
-# are not doing classification)
 # try to classify the area of the body the tumor was in too???? using 'anatomy' col 
 
 
@@ -55,7 +45,7 @@ img_paths = data_frame['imgPath']
 # do some preprocessing of the data
 def path_to_image(path):
     #load image from path as numpy array
-    image = pdcm.dcmread(os.path.join(IMAGE_BASE_PATH, path)).pixel_array
+    image = pydicom.dcmread(os.path.join(IMAGE_BASE_PATH, path)).pixel_array
     return image
 
 # normalize dicom image pixel values to 0-1 range
@@ -67,7 +57,7 @@ def normalize_image(img):
 
 # normalize the ground truth bounding box labels wrt image dimensions
 def normalize_points(points):
-    imDims = 512.0 # TODO dont hardcode??
+    imDims = 512.0 #each image is 512x512 
     points = list(points)
     for i in range(len(points)):
         points[i] /= imDims
@@ -89,9 +79,6 @@ train_imgs, test_imgs, train_points, test_points = \
 
 num_train_examples = len(train_imgs)
 num_test_examples = len(test_imgs)
-n_tr_labs = len(train_points)
-n_te_labs = len(test_points)
-print("training with {}+{} and testing with {}+{}".format(num_train_examples, n_tr_labs, num_test_examples, n_te_labs))
 
 # create generator for training the model in batches
 generator = ImageDataGenerator(rotation_range=0, zoom_range=0,
@@ -162,7 +149,7 @@ x if x>0 else 0.1*x
 # custom loss function using aspects of relevant information from the YOLO paper
 # y_true and y_pred are tf tensors
 def YOLO_loss(y_true, y_pred):
-    #TODO: implement me!!! (sum squared error)
+    #TODO: implement me!!! (sum squared error + IOU)
     pass
 
 #TODO: adjust parameters for adam optimizer; change learning rate?
@@ -170,7 +157,7 @@ model.compile(optimizer='adam',
               loss='mean_squared_error', 
               metrics=['accuracy'])
 
-#print(model.summary())
+#print(model.summary()) #see the shape of the model
 
 
 ###                   TRAIN THE MODEL                ###
@@ -187,10 +174,19 @@ and finally 10e-4 for 30 epochs
 BATCH_SIZE = 5
 num_epochs = 1
 
-
 print('fitting the model\n')
 model.fit_generator(generator.flow(train_imgs, train_points, batch_size=BATCH_SIZE), epochs=num_epochs, \
     steps_per_epoch=(num_train_examples // BATCH_SIZE))
+
+
+
+###                 EVALUATE THE MODEL               ###
+
+#evaluate the accuracy of the trained model using the test datasets
+loss, accuracy = model.evaluate(test_imgs, test_points)
+print("Final loss:{}\nFinal accuracy:{}".format(loss, accuracy))
+
+
 
 """
 NOTES:
@@ -200,13 +196,7 @@ use tf.image.draw_bounding_boxes (draws bb points on images in passed in tensor 
 
 """
 
-
-###                 EVALUATE THE MODEL               ###
-
-#TODO: replace train_imgs with testing dataset
-loss, accuray = model.evaluate(test_imgs, test_points)
-
-
-print('making a prediction\n') 
-output = model.predict(train_imgs[0:2], batch_size=BATCH_SIZE)
-print('out is {}'.format(output))
+###                 SAVING THE MODEL                 ###
+# save the model so that it can be loaded without training later
+save_path = 'trained_model/cancer_detector.h5'
+model.save(save_path) #save entire model as HDF5 model
