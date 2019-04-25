@@ -1,6 +1,7 @@
-# Import tensorflow 
+# Import tensorflow
 import tensorflow as tf
 import tensorflow_datasets as tfds
+import keras.backend as K
 
 # Helper libraries
 import math
@@ -8,6 +9,7 @@ import numpy as np
 import pandas as pd
 import pydicom
 import os
+import sys
 import random
 
 # Imports for dataset manipulation
@@ -19,10 +21,16 @@ import tqdm
 import tqdm.auto
 tqdm.tqdm = tqdm.auto.tqdm
 
- 
 tf.enable_eager_execution() #comment this out if causing errors
 tf.logging.set_verbosity(tf.logging.DEBUG)
 
+"""
+NOTES:
+use tf.image.nonMaxSuppression (perform non max sup on of bounding boxes of intersection over the union)
+
+use tf.image.draw_bounding_boxes (draws bb points on images in passed in tensor objects of pts and imgs)
+
+"""
 
 ###         GET THE DATASET AND PREPROCESS IT        ###
 
@@ -41,7 +49,6 @@ img_paths = data_frame['imgPath']
 # try to classify the area of the body the tumor was in too???? using 'anatomy' col 
 
 
-
 # do some preprocessing of the data
 def path_to_image(path):
     #load image from path as numpy array
@@ -51,7 +58,7 @@ def path_to_image(path):
 # normalize dicom image pixel values to 0-1 range
 def normalize_image(img):
     img = img.astype(np.float32)
-    img += abs(np.amin(img)) 
+    img += abs(np.amin(img))
     img /= np.amax(img)
     return img
 
@@ -80,6 +87,7 @@ train_imgs, test_imgs, train_points, test_points = \
 num_train_examples = len(train_imgs)
 num_test_examples = len(test_imgs)
 
+
 # create generator for training the model in batches
 generator = ImageDataGenerator(rotation_range=0, zoom_range=0,
 	width_shift_range=0, height_shift_range=0, shear_range=0,
@@ -95,10 +103,10 @@ model = tf.keras.Sequential([
     tf.keras.layers.Conv2D(64, (7, 7), padding='same', activation=tf.nn.leaky_relu,
                                strides=2, input_shape=(512, 512, 1)),
     tf.keras.layers.MaxPooling2D((2,2), strides=2),
-    
+
     tf.keras.layers.Conv2D(192, (3,3), padding='same', activation=tf.nn.leaky_relu),
     tf.keras.layers.MaxPooling2D((2,2), strides=2),
-    
+
     tf.keras.layers.Conv2D(128, (1,1), padding='same', activation=tf.nn.leaky_relu),
     tf.keras.layers.Conv2D(256, (3,3), padding='same', activation=tf.nn.leaky_relu),
     tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.leaky_relu),
@@ -137,7 +145,7 @@ model = tf.keras.Sequential([
 Our final layer predicts both class probabilities and
 bounding box coordinates. We normalize the bounding box
 width and height by the image width and height so that they
-fall between 0 and 1. 
+fall between 0 and 1.
 
 We use a sigmoid activation function for the final layer to facilitate
 learning of the  normalized range of the output.
@@ -147,14 +155,54 @@ x if x>0 else 0.1*x
 """
 
 # custom loss function using aspects of relevant information from the YOLO paper
-# y_true and y_pred are tf tensors
 def YOLO_loss(y_true, y_pred):
-    #TODO: implement me!!! (sum squared error + IOU)
-    pass
+    # extract points from tensors
+    x_LT = y_true[:, 0]
+    y_UT = y_true[:, 1]
+    x_RT = y_true[:, 2]
+    y_LT = y_true[:, 3]
+
+    x_LP = y_pred[:, 0]
+    y_UP = y_pred[:, 1]
+    x_RP = y_pred[:, 2]
+    y_LP = y_pred[:, 3]
+
+    lambda_coord = 5
+
+    # calculate the mean squared error
+    x_Pmid = tf.math.add(x_LP, tf.math.divide(tf.math.subtract(x_RP, x_LP), 2))
+    x_Tmid = tf.math.add(x_LT, tf.math.divide(tf.math.subtract(x_RT, x_LT), 2))
+    y_Pmid = tf.math.add(y_UP, tf.math.divide(tf.math.subtract(y_LP, y_UP), 2))
+    y_Tmid = tf.math.add(y_UT, tf.math.divide(tf.math.subtract(y_LT, y_UT), 2))
+
+    x_mid_sqdiff = tf.math.square(tf.math.subtract(x_Pmid, x_Tmid))
+    y_mid_sqdiff = tf.math.square(tf.math.subtract(y_Pmid, y_Tmid))
+
+    first_term = tf.math.add(x_mid_sqdiff, y_mid_sqdiff)
+
+    x_Pwidth = tf.math.sqrt(tf.math.abs(tf.math.subtract(x_RP, x_LP)))
+    x_Twidth = tf.math.sqrt(tf.math.abs(tf.math.subtract(x_RT, x_LT)))
+    y_Pheight = tf.math.sqrt(tf.math.abs(tf.math.subtract(y_UP, y_LP)))
+    y_Theight = tf.math.sqrt(tf.math.abs(tf.math.subtract(y_UT, y_LT)))
+
+    second_term = tf.math.add(tf.math.square(tf.math.subtract(x_Pwidth,  x_Twidth)),
+                              tf.math.square(tf.math.subtract(y_Pheight, y_Theight)))
+
+    # calculate the intersection over the union
+    intersection = tf.math.multiply(tf.math.subtract(x_RP, x_LT), tf.math.subtract(y_LP, y_UT))
+    union_double = tf.math.add(tf.math.multiply(tf.math.subtract(x_RP, x_LP), tf.math.subtract(y_LP,y_UP)),
+                               tf.math.multiply(tf.math.subtract(x_RT, x_LT), tf.math.subtract(y_LT, y_UT)))
+    union = tf.math.subtract(union_double, intersection)
+    iou = tf.math.divide(intersection, union)
+
+    loss = tf.math.add(tf.math.multiply(tf.math.add(first_term, second_term), lambda_coord), iou)
+
+    return loss
+
 
 #TODO: adjust parameters for adam optimizer; change learning rate?
-model.compile(optimizer='adam', 
-              loss='mean_squared_error', 
+model.compile(optimizer='adam',
+              loss=YOLO_loss,
               metrics=['accuracy'])
 
 #print(model.summary()) #see the shape of the model
@@ -165,10 +213,10 @@ model.compile(optimizer='adam',
 We train the network for about 135 epochs(thats a lot, they required dropout and data aug).
 Throughout training we use a batch size of 64, a momentum of 0.9 and a decay of 0.0005.
 
-Our  learning  rate  schedule  is  as  follows:  For  the  first epochs 
+Our  learning  rate  schedule  is  as  follows:  For  the  first epochs
 we slowly raise the learning rate from 10e-3 to 10e-2. If we start at a
-high learning rate our model often diverges due to unstable gradients. 
-We continue training with 10e-2 for 75 epochs, then 10e-3 for 30 epochs, 
+high learning rate our model often diverges due to unstable gradients.
+We continue training with 10e-2 for 75 epochs, then 10e-3 for 30 epochs,
 and finally 10e-4 for 30 epochs
 """
 BATCH_SIZE = 5
@@ -187,14 +235,6 @@ loss, accuracy = model.evaluate(test_imgs, test_points)
 print("Final loss:{}\nFinal accuracy:{}".format(loss, accuracy))
 
 
-
-"""
-NOTES:
-use tf.image.nonMaxSuppression (perform non max sup on of bounding boxes of intersection over the union)
-
-use tf.image.draw_bounding_boxes (draws bb points on images in passed in tensor objects of pts and imgs)
-
-"""
 
 ###                 SAVING THE MODEL                 ###
 # save the model so that it can be loaded without training later
