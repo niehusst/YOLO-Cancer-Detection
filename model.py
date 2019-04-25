@@ -1,4 +1,5 @@
-# Import tensorflow 
+from __future__ import print_function
+# Import tensorflow
 import tensorflow as tf
 import tensorflow_datasets as tfds
 tf.logging.set_verbosity(tf.logging.ERROR)
@@ -9,6 +10,7 @@ import numpy as np
 import pandas as pd
 import pydicom as pdcm
 import os
+import sys
 import random
 from keras.preprocessing.image import ImageDataGenerator
 
@@ -20,7 +22,9 @@ import tqdm
 import tqdm.auto
 tqdm.tqdm = tqdm.auto.tqdm
 
-# allow for dataset iteration. 
+import keras.backend as K
+
+# allow for dataset iteration.
 tf.enable_eager_execution() #comment this out if causing errors
 
 tf.logging.set_verbosity(tf.logging.DEBUG)
@@ -48,7 +52,7 @@ train_points = zip(data_frame['start_x'], data_frame['start_y'], \
 train_img_paths = data_frame['imgPath']
 # TODO: add class label for all the data (each should just be 1 (aka cancer) since we
 # are not doing classification)
-# try to classify the area of the body the tumor was in too???? using 'anatomy' col of 
+# try to classify the area of the body the tumor was in too???? using 'anatomy' col of
 
 num_train_examples = len(data_frame['imgPath'])
 
@@ -61,7 +65,7 @@ def path_to_image(path):
 # normalize dicom image pixel values to 0-1 range
 def normalize_image(img):
     img = img.astype(np.float32)
-    img += abs(np.amin(img)) 
+    img += abs(np.amin(img))
     img /= np.amax(img)
     return img
 
@@ -74,7 +78,7 @@ def normalize_points(points):
     return np.array(points).astype(np.float32)
 
 train_points = map(normalize_points, train_points)
-train_imgs = map(path_to_image, train_img_paths) 
+train_imgs = map(path_to_image, train_img_paths)
 train_imgs = map(normalize_image, train_imgs)
 
 # create generator for training the model in batches
@@ -92,10 +96,10 @@ model = tf.keras.Sequential([
     tf.keras.layers.Conv2D(64, (7, 7), padding='same', activation=tf.nn.leaky_relu,
                                strides=2, input_shape=(512, 512, 1)),
     tf.keras.layers.MaxPooling2D((2,2), strides=2),
-    
+
     tf.keras.layers.Conv2D(192, (3,3), padding='same', activation=tf.nn.leaky_relu),
     tf.keras.layers.MaxPooling2D((2,2), strides=2),
-    
+
     tf.keras.layers.Conv2D(128, (1,1), padding='same', activation=tf.nn.leaky_relu),
     tf.keras.layers.Conv2D(256, (3,3), padding='same', activation=tf.nn.leaky_relu),
     tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.leaky_relu),
@@ -134,7 +138,7 @@ model = tf.keras.Sequential([
 Our final layer predicts both class probabilities and
 bounding box coordinates. We normalize the bounding box
 width and height by the image width and height so that they
-fall between 0 and 1. 
+fall between 0 and 1.
 
 We use a sigmoid activation function for the final layer to facilitate
 learning of the  normalized range of the output.
@@ -147,11 +151,30 @@ x if x>0 else 0.1*x
 # y_true and y_pred are tf tensors
 def YOLO_loss(y_true, y_pred):
     #TODO: implement me!!! (sum squared error)
-    pass
+
+    x_LT = y_true[:, 0]
+    y_UT = y_true[:, 1]
+    x_RT = y_true[:, 2]
+    y_LT = y_true[:, 3]
+
+    x_LP = y_pred[:, 0]
+    y_UP = y_pred[:, 1]
+    x_RP = y_pred[:, 2]
+    y_LP = y_pred[:, 3]
+
+    #TODO: Need to use keras backend for arithmetic operations
+    #      on tf Tensors
+    intersection = (x_RP-x_LT)*(y_LP-y_UT)
+    union_double = (x_RP-x_LP)*(y_LP-y_UP) + (x_RT-x_LT)*(y_LT-y_UT)
+    union = union_double - intersection
+    loss = intersection / union
+
+    return loss
+
 
 #TODO: adjust parameters for adam optimizer; change learning rate?
-model.compile(optimizer='adam', 
-              loss='mean_squared_error', 
+model.compile(optimizer='adam',
+              loss=YOLO_loss,
               metrics=['accuracy'])
 
 #print(model.summary())
@@ -161,10 +184,10 @@ model.compile(optimizer='adam',
 We train the network for about 135 epochs(thats a lot, they required dropout and data aug).
 Throughout training we use a batch size of 64, a momentum of 0.9 and a decay of 0.0005.
 
-Our  learning  rate  schedule  is  as  follows:  For  the  first epochs 
+Our  learning  rate  schedule  is  as  follows:  For  the  first epochs
 we slowly raise the learning rate from 10e-3 to 10e-2. If we start at a
-high learning rate our model often diverges due to unstable gradients. 
-We continue training with 10e-2 for 75 epochs, then 10e-3 for 30 epochs, 
+high learning rate our model often diverges due to unstable gradients.
+We continue training with 10e-2 for 75 epochs, then 10e-3 for 30 epochs,
 and finally 10e-4 for 30 epochs
 """
 BATCH_SIZE = 1
@@ -175,14 +198,11 @@ train_imgs = np.array(train_imgs)
 train_points = np.array(train_points)
 train_imgs = train_imgs.reshape(-1, 512, 512, 1)
 
-print('making a prediction\n') #try running some test data through the model (untrained) to see if the info it gives back is any more useful for debugging than 
+print('making a prediction\n') #try running some test data through the model (untrained) to see if the info it gives back is any more useful for debugging than
 output = model.predict(train_imgs[0:2], batch_size=BATCH_SIZE)
 print('out is {}'.format(output))
 
 print('fitting the model\n')
-
-print(np.array(train_points[0:2]).shape)
-print(np.array(train_imgs[0:2]).shape)
 model.fit_generator(generator.flow(train_imgs, train_points, batch_size=BATCH_SIZE), epochs=num_epochs, \
     steps_per_epoch=(num_train_examples // BATCH_SIZE))
 
