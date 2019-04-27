@@ -14,7 +14,8 @@ from skimage.transform import resize
 import sys, os
 
 # Global variables
-load_path = 'trained_model/cancer_detector.h5'
+shape_path = 'trained_model/model_shape.json'
+weights_path = 'trained_model/model_weights.h5'
 img_dims = 512
 
 
@@ -24,10 +25,16 @@ def load_model(path):
     @param path - path to valid HDF5 file of YOLO cancer detection model
     @return model - a fully trained tf/keras model
     """
-    print("Starting to load model...", end="")
-    model = keras.models.load_model(path)
+    print("Loading model from disk...", end="")
+    # load json and create model
+    json_file = open(shape_path, 'r')
+    loaded_model_json = json_file.read()
+    json_file.close()
+    loaded_model = tf.keras.models.model_from_json(loaded_model_json)
+    # load weights into new model
+    loaded_model.load_weights(weights_path)
     print("Complete!")
-    return model
+    return loaded_model
 
 def is_dicom(im_path):
     """
@@ -35,8 +42,14 @@ def is_dicom(im_path):
     @param im_path - string path to an image file
     @return - boolean, True if is a dicom image, else False
     """
-    # if doesn't end with jpg/png
-    pass
+    # get file extension
+    path, ext = os.path.splitext(im_path)
+    
+    # if file extension is empty or is .dcm, assume DICOM file
+    if ext == ".dcm" or ext == "":
+        return True
+    else:
+        return False
 
 def load_image(im_path):
     """

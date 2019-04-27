@@ -1,6 +1,5 @@
 # Import tensorflow
 import tensorflow as tf
-import tensorflow_datasets as tfds
 import keras.backend as K
 
 # Helper libraries
@@ -92,6 +91,7 @@ num_test_examples = len(test_imgs)
 generator = ImageDataGenerator(rotation_range=0, zoom_range=0,
 	width_shift_range=0, height_shift_range=0, shear_range=0,
 	horizontal_flip=False, fill_mode="nearest")
+#TODO: use data augment to flip? (change steps per batch so all images get seen in an epoch!)
 
 
 print("Data preprocessing complete\n")
@@ -100,40 +100,40 @@ print("Data preprocessing complete\n")
 ###            DEFINITION OF MODEL SHAPE             ###
 
 model = tf.keras.Sequential([
-    tf.keras.layers.Conv2D(64, (7, 7), padding='same', activation=tf.nn.leaky_relu,
+    tf.keras.layers.Conv2D(64, (7, 7), padding='same', activation=tf.nn.relu,
                                strides=2, input_shape=(512, 512, 1)),
     tf.keras.layers.MaxPooling2D((2,2), strides=2),
 
-    tf.keras.layers.Conv2D(192, (3,3), padding='same', activation=tf.nn.leaky_relu),
+    tf.keras.layers.Conv2D(192, (3,3), padding='same', activation=tf.nn.relu),
     tf.keras.layers.MaxPooling2D((2,2), strides=2),
 
-    tf.keras.layers.Conv2D(128, (1,1), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(256, (3,3), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.leaky_relu),
+    tf.keras.layers.Conv2D(128, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(256, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.relu),
     tf.keras.layers.MaxPooling2D((2,2), strides=2),
 
-    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(512, (1,1), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.leaky_relu),
+    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
     tf.keras.layers.MaxPooling2D((2,2), strides=2),
 
-    tf.keras.layers.Conv2D(512, (1,1), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(512, (1,1), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(1024, (3,3), padding='same', strides=2, activation=tf.nn.leaky_relu),
+    tf.keras.layers.Conv2D(512, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', strides=2, activation=tf.nn.relu),
 
-    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.leaky_relu),
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
 
     tf.keras.layers.Flatten(), #flatten images into array for the fully connnected layers
 #    tf.keras.layers.Dense(1024, activation=tf.nn.sigmoid),
@@ -156,20 +156,21 @@ x if x>0 else 0.1*x
 
 # custom loss function using aspects of relevant information from the YOLO paper
 def YOLO_loss(y_true, y_pred):
-    # extract points from tensors
-    x_LT = y_true[:, 0]
-    y_UT = y_true[:, 1]
-    x_RT = y_true[:, 2]
-    y_LT = y_true[:, 3]
-
-    x_LP = y_pred[:, 0]
-    y_UP = y_pred[:, 1]
-    x_RP = y_pred[:, 2]
-    y_LP = y_pred[:, 3]
+    # extract points from tensors:
+    # ground truth label points
+    x_LT = y_true[:, 0] # left x coord
+    y_UT = y_true[:, 1] # upper y coord
+    x_RT = y_true[:, 2] # right x coord
+    y_LT = y_true[:, 3] # lower y coord
+    # predicted points
+    x_LP = y_pred[:, 0] # left x coord
+    y_UP = y_pred[:, 1] # upper y coord
+    x_RP = y_pred[:, 2] # right x coord
+    y_LP = y_pred[:, 3] # lower y coord 
 
     lambda_coord = 5
 
-    # calculate the mean squared error
+    # calculate the mean squared error for mid_points
     x_Pmid = tf.math.add(x_LP, tf.math.divide(tf.math.subtract(x_RP, x_LP), 2))
     x_Tmid = tf.math.add(x_LT, tf.math.divide(tf.math.subtract(x_RT, x_LT), 2))
     y_Pmid = tf.math.add(y_UP, tf.math.divide(tf.math.subtract(y_LP, y_UP), 2))
@@ -180,6 +181,7 @@ def YOLO_loss(y_true, y_pred):
 
     first_term = tf.math.add(x_mid_sqdiff, y_mid_sqdiff)
 
+    # calculate mean squared error for width and height
     x_Pwidth = tf.math.sqrt(tf.math.abs(tf.math.subtract(x_RP, x_LP)))
     x_Twidth = tf.math.sqrt(tf.math.abs(tf.math.subtract(x_RT, x_LT)))
     y_Pheight = tf.math.sqrt(tf.math.abs(tf.math.subtract(y_UP, y_LP)))
@@ -189,20 +191,22 @@ def YOLO_loss(y_true, y_pred):
                               tf.math.square(tf.math.subtract(y_Pheight, y_Theight)))
 
     # calculate the intersection over the union
-    intersection = tf.math.multiply(tf.math.subtract(x_RP, x_LT), tf.math.subtract(y_LP, y_UT))
+    intersection = tf.math.multiply(tf.math.abs(tf.math.subtract(x_LT, x_RP)),
+                                        tf.math.abs(tf.math.subtract(y_UT, y_LP)))
     union_double = tf.math.add(tf.math.multiply(tf.math.subtract(x_RP, x_LP), tf.math.subtract(y_LP,y_UP)),
                                tf.math.multiply(tf.math.subtract(x_RT, x_LT), tf.math.subtract(y_LT, y_UT)))
-    union = tf.math.subtract(union_double, intersection)
-    iou = tf.math.divide(intersection, union)
+    union = tf.math.abs(tf.math.subtract(union_double, intersection))
+    iou = tf.math.divide(intersection, union) #TODO: IOU actually increases as match is better; it should decrease+
+    #invert and add epsilon value (some super tiny thing)
 
     loss = tf.math.add(tf.math.multiply(tf.math.add(first_term, second_term), lambda_coord), iou)
 
-    return loss
+    return iou
 
 
 #TODO: adjust parameters for adam optimizer; change learning rate?
 model.compile(optimizer='adam',
-              loss=YOLO_loss,
+              loss='mean_squared_error',#YOLO_loss,
               metrics=['accuracy'])
 
 #print(model.summary()) #see the shape of the model
@@ -238,5 +242,15 @@ print("Final loss:{}\nFinal accuracy:{}".format(loss, accuracy))
 
 ###                 SAVING THE MODEL                 ###
 # save the model so that it can be loaded without training later
-save_path = 'trained_model/cancer_detector.h5'
-model.save(save_path) #save entire model as HDF5 model
+shape_path = 'trained_model/model_shape.json'
+weight_path = 'trained_model/model_weights.h5'
+#model.save(save_path, overwrite=True) #broken#save entire model as HDF5 model
+
+# serialize model to JSON
+model_json = model.to_json()
+with open(shape_path, "w") as json_file:
+    json_file.write(model_json)
+# serialize weights to HDF5
+model.save_weights(weight_path)
+print("Saved model to disk")
+
