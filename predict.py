@@ -7,7 +7,7 @@ import numpy as np
 import pydicom
 from skimage.transform import resize
 import PIL
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageColor
 
 # Helper imports
 import sys, os
@@ -59,12 +59,10 @@ def load_image(im_path):
     """
     if is_dicom(im_path):
         # load with pydicom
-        print("loading dicom")
         im = pydicom.dcmread(im_path).pixel_array
         return im
     else:
         # load with Pillow
-        print("loading pill")
         im = Image.open(im_path)
         return np.array(im)
 
@@ -114,15 +112,18 @@ def main(argv):
     
     # make a prediction on the loaded image
     output = model.predict(preprocessed_img, batch_size=1)
-    print('first prediction was {}'.format(output[0]))
-
+    
     # un-normalize prediction to get plotable points
-    points = output * 512
+    points = np.array(output[0]) * 512
+    points = list(points.astype(np.int32))
+    print('Predicted points: {}'.format(points))
 
     # display prediction on image (with ground truth if training data???)
     #TODO:how to draw the bb?
     im = Image.fromarray(img)
-    im.show() #TODO: this causes the display range to be bad, normalized is too squeezed a range (compare to command line 'display')
+    draw = ImageDraw.Draw(im)
+    draw.rectangle(points, outline='#ff0000')
+    im.show() #TODO: loading this way causes the display range to be bad, normalized is too squeezed a range (compare to command line 'display')
 
 """
 A program to use the trained and saved YOLO cancer detection model to make a 
