@@ -1,14 +1,13 @@
 # Import tensorflow 
 import tensorflow as tf
-import tensorflow_datasets as tfds
 import keras
 
 # Imports for visualizing predictions
 import numpy as np
-import matplotlib
-matplotlib.use('PS') #prevent import error due to venv
-import matplotlib.pyplot as plt
+import pydicom
 from skimage.transform import resize
+import PIL
+from PIL import Image, ImageDraw
 
 # Helper imports
 import sys, os
@@ -17,22 +16,22 @@ import sys, os
 shape_path = 'trained_model/model_shape.json'
 weights_path = 'trained_model/model_weights.h5'
 img_dims = 512
+#/home/niehusst/vision262/project/YOLO/data/TCGA-61-2012/1.3.6.1.4.1.14519.5.2.1.6450.4007.336565074650874040486975138397/18
 
-
-def load_model(path):
+def load_model(shape_file, weights_file):
     """
     Load a tensorflow/keras model from an HDF5 file found at provided path.
     @param path - path to valid HDF5 file of YOLO cancer detection model
     @return model - a fully trained tf/keras model
     """
-    print("Loading model from disk...", end="")
+    print("Loading model from disk..."),
     # load json and create model
-    json_file = open(shape_path, 'r')
+    json_file = open(shape_file, 'r')
     loaded_model_json = json_file.read()
     json_file.close()
     loaded_model = tf.keras.models.model_from_json(loaded_model_json)
     # load weights into new model
-    loaded_model.load_weights(weights_path)
+    loaded_model.load_weights(weights_file)
     print("Complete!")
     return loaded_model
 
@@ -60,10 +59,12 @@ def load_image(im_path):
     """
     if is_dicom(im_path):
         # load with pydicom
+        print("loading dicom")
         im = pydicom.dcmread(im_path).pixel_array
         return im
     else:
         # load with Pillow
+        print("loading pill")
         im = Image.open(im_path)
         return np.array(im)
 
@@ -77,32 +78,51 @@ def pre_process(img):
     im_adjusted = resize(img, (img_dims,img_dims), anti_aliasing=True,\
                              preserve_range=True)
 
-    #TODO: ensure image is grayscale (only has 1 channel)
+    # ensure image is grayscale (only has 1 channel)
     im_adjusted = im_adjusted.astype(np.float32)
+    if len(im_adjusted.shape) >= 3:
+        # squash 3 channel image
+        im_adjusted = np.dot(im_adjusted[...,:3], [0.299, 0.587, 0.114])
     
-    #TODO: normalize the image to a 0-1 range
+    # normalize the image to a 0-1 range
+    if not np.amax(im_adjusted) < 1: # check that image isn't already normalized
+        if np.amin(im_adjusted) < 0:
+            im_adjusted += np.amin(im_adjusted)
+        im_adjusted /= np.amax(im_adjusted)
     
     # model requires 4D input; shape it to expected dims
     im_adjusted = np.reshape(im_adjusted, (1, img_dims, img_dims, 1))
     return im_adjusted
 
 def main(argv):
+    """
+    Loads a saved Keras model from the trained_model/ directory and loads the
+    image from the path specified in the command line argument. It uses the 
+    model to make a bounding box prediction on the input image, and displays the
+    image with the predicted bounding box.
+    @param agrv[1] - command line argument, path to valid CT scan img containing
+                     cancer which the model can make a prediction on.
+    """
     # load a pretrained model from HDF5 file
-    model = load_model(load_path)
+    model = load_model(shape_path, weights_path)
 
     # load image from argv
     img = load_image(argv[1])
     
     # ensure image fits model input dimensions
-    img = pre_process(img)
+    preprocessed_img = pre_process(img)
     
     # make a prediction on the loaded image
-    output = model.predict(img, batch_size=1)
+    output = model.predict(preprocessed_img, batch_size=1)
     print('first prediction was {}'.format(output[0]))
 
-    # display prediction on image (with ground truth if training data???)
-    #TODO:use matplotlib to draw the bb? remember predicted pointes are dimension normalized
+    # un-normalize prediction to get plotable points
+    points = output * 512
 
+    # display prediction on image (with ground truth if training data???)
+    #TODO:how to draw the bb?
+    im = Image.fromarray(img)
+    im.show() #TODO: this causes the display range to be bad, normalized is too squeezed a range (compare to command line 'display')
 
 """
 A program to use the trained and saved YOLO cancer detection model to make a 
