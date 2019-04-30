@@ -9,7 +9,7 @@ import pandas as pd
 import pydicom
 import os
 import sys
-import random
+import time
 
 # Imports for dataset manipulation
 from sklearn.model_selection import train_test_split
@@ -19,8 +19,9 @@ from keras.preprocessing.image import ImageDataGenerator
 import tqdm
 import tqdm.auto
 tqdm.tqdm = tqdm.auto.tqdm
+#from keras.callbacks import TensorBoard
 
-tf.enable_eager_execution() #comment this out if causing errors
+#tf.enable_eager_execution() #comment this out if causing errors
 tf.logging.set_verbosity(tf.logging.DEBUG)
 
 """
@@ -151,25 +152,28 @@ We use a sigmoid activation function for the final layer to facilitate
 learning of the  normalized range of the output.
 all other layers use the following leaky rectified linear activation:
 x if x>0 else 0.1*x
-(i think tf.nn.leaky_relu has default of 0.2 instead of 0.1)
+(i think tf.nn.leaky_relu has default of 0.2 instead of 0.1) 
+
+leaky_relu gets us worse accuracy than regular relu
 """
 
 # custom loss function using aspects of relevant information from the YOLO paper
 def YOLO_loss(y_true, y_pred):
     # extract points from tensors:
     # ground truth label points
-    x_LT = y_true[:, 0] # left x coord
+    x_LT = y_true[:, 0] #  left x coord
     y_UT = y_true[:, 1] # upper y coord
     x_RT = y_true[:, 2] # right x coord
     y_LT = y_true[:, 3] # lower y coord
     # predicted points
-    x_LP = y_pred[:, 0] # left x coord
+    x_LP = y_pred[:, 0] #  left x coord
     y_UP = y_pred[:, 1] # upper y coord
     x_RP = y_pred[:, 2] # right x coord
     y_LP = y_pred[:, 3] # lower y coord 
 
     lambda_coord = 5
 
+    """
     # calculate the mean squared error for mid_points
     x_Pmid = tf.math.add(x_LP, tf.math.divide(tf.math.subtract(x_RP, x_LP), 2))
     x_Tmid = tf.math.add(x_LT, tf.math.divide(tf.math.subtract(x_RT, x_LT), 2))
@@ -189,25 +193,52 @@ def YOLO_loss(y_true, y_pred):
 
     second_term = tf.math.add(tf.math.square(tf.math.subtract(x_Pwidth,  x_Twidth)),
                               tf.math.square(tf.math.subtract(y_Pheight, y_Theight)))
-
+    """
     # calculate the intersection over the union
     intersection = tf.math.multiply(tf.math.abs(tf.math.subtract(x_LT, x_RP)),
                                         tf.math.abs(tf.math.subtract(y_UT, y_LP)))
     union_double = tf.math.add(tf.math.multiply(tf.math.subtract(x_RP, x_LP), tf.math.subtract(y_LP,y_UP)),
                                tf.math.multiply(tf.math.subtract(x_RT, x_LT), tf.math.subtract(y_LT, y_UT)))
     union = tf.math.abs(tf.math.subtract(union_double, intersection))
-    iou = tf.math.divide(intersection, union) #TODO: IOU actually increases as match is better; it should decrease+
+    #iou = tf.math.divide(intersection, union) #TODO: IOU actually increases as match is better; it should decrease
     #invert and add epsilon value (some super tiny thing)
+    epsilon = 0.00001
+    iou = tf.math.divide(union, tf.math.add(intersection, epsilon))
+    
+    #loss = tf.math.add(tf.math.multiply(tf.math.add(first_term, second_term), lambda_coord), iou)
+    # mse
+    mse = tf.keras.metrics.mean_squared_error(y_true, y_pred)
+    loss = tf.math.add(tf.math.multiply(mse, lambda_coord), iou)
+    return mse
 
-    loss = tf.math.add(tf.math.multiply(tf.math.add(first_term, second_term), lambda_coord), iou)
-
+def IOU_metric(y_true, y_pred):
+    x_LT = y_true[:, 0] # left x coord
+    y_UT = y_true[:, 1] # upper y coord
+    x_RT = y_true[:, 2] # right x coord
+    y_LT = y_true[:, 3] # lower y coord
+    # predicted points
+    x_LP = y_pred[:, 0] # left x coord
+    y_UP = y_pred[:, 1] # upper y coord
+    x_RP = y_pred[:, 2] # right x coord
+    y_LP = y_pred[:, 3] # lower y coord
+    # calculate the intersection over the union
+    intersection = tf.math.multiply(tf.math.abs(tf.math.subtract(x_LT, x_RP)),
+                                    tf.math.abs(tf.math.subtract(y_UT, y_LP)))
+    union_double = tf.math.add(tf.math.multiply(tf.math.subtract(x_RP, x_LP),
+                tf.math.subtract(y_LP,y_UP)),tf.math.multiply(tf.math.subtract(x_RT, x_LT),
+                          tf.math.subtract(y_LT, y_UT)))
+    union = tf.math.abs(tf.math.subtract(union_double, intersection))
+    #iou = tf.math.divide(intersection, union) #TODO: IOU actually increases as match is better; it should decrease
+    #invert true iou equation and add epsilon to intersection to prevent divide-by-0 error
+    epsilon = 0.00001
+    iou = tf.math.divide(union, tf.math.add(intersection, epsilon))
     return iou
-
+    
 
 #TODO: adjust parameters for adam optimizer; change learning rate?
 model.compile(optimizer='adam',
-              loss='mean_squared_error',#YOLO_loss,
-              metrics=['accuracy'])
+              loss=YOLO_loss,
+              metrics=['accuracy', IOU_metric])
 
 #print(model.summary()) #see the shape of the model
 
@@ -224,27 +255,40 @@ We continue training with 10e-2 for 75 epochs, then 10e-3 for 30 epochs,
 and finally 10e-4 for 30 epochs
 """
 BATCH_SIZE = 5
-num_epochs = 1
+num_epochs = 5
+callbacks = []
 
-print('fitting the model\n')
-model.fit_generator(generator.flow(train_imgs, train_points, batch_size=BATCH_SIZE), epochs=num_epochs, \
-    steps_per_epoch=(num_train_examples // BATCH_SIZE))
+# train with tensorboard to visualize training on localhost:6006. Call from terminal with:
+#tensorboard --logdir=/full/path/to/logs
+callbacks.append(tf.keras.callbacks.TensorBoard(log_dir='logs/{}'.format(time.time()),
+                                                 write_graph=False,
+                                                 batch_size=BATCH_SIZE,
+                                                 update_freq='batch'))
+# save model at checkpoints
+callbacks.append(tf.keras.callbacks.ModelCheckpoint('checkpoints/best_weights.h5',
+                                    monitor='val_loss', verbose=0, save_best_only=True,
+                                    save_weights_only=True, mode='auto', period=1))
+
+print('Fitting the model\n')
+model.fit_generator(generator.flow(train_imgs, train_points, batch_size=BATCH_SIZE), 
+                        callbacks=callbacks, epochs=num_epochs,
+                        steps_per_epoch=(num_train_examples // BATCH_SIZE))
 
 
 
 ###                 EVALUATE THE MODEL               ###
 
-#evaluate the accuracy of the trained model using the test datasets
+# evaluate the accuracy of the trained model using the test datasets
 loss, accuracy = model.evaluate(test_imgs, test_points)
 print("Final loss:{}\nFinal accuracy:{}".format(loss, accuracy))
 
 
 
 ###                 SAVING THE MODEL                 ###
+
 # save the model so that it can be loaded without training later
 shape_path = 'trained_model/model_shape.json'
 weight_path = 'trained_model/model_weights.h5'
-#model.save(save_path, overwrite=True) #broken#save entire model as HDF5 model
 
 # serialize model to JSON
 model_json = model.to_json()
