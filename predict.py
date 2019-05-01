@@ -98,6 +98,25 @@ def pre_process(img):
     im_adjusted = np.reshape(im_adjusted, (1, img_dims, img_dims, 1))
     return im_adjusted
 
+def normalize_image(img):
+    """
+    Normalize an image to the range of 0-255. This may help reduce the white
+    washing that occurs with displaying DICOM images with PIL.
+    @param img - a numpy array representing an image
+    @return normalized - a numpy array whose elements are all within the range 
+                         of 0-255
+    """
+    # adjust for negative values
+    normalized = img + np.abs(np.amin(img))
+    
+    # normalize to 0-1
+    normalized = normalized.astype(np.float32)
+    normalized /= np.amax(normalized)
+    
+    # stretch scale of range to 255
+    normalized *= 255
+    return normalized
+    
 def main():
     """
     Loads a saved Keras model from the trained_model/ directory and loads the
@@ -126,8 +145,11 @@ def main():
         points = np.array(output[0]) * 512
         points = list(points.astype(np.int32))
 
+        # normalize image to prevent as much white-washing
+        norm = normalize_image(img)
+        
         # draw bbox of predicted points
-        im = Image.fromarray(img).convert("RGB") #convert RGB for colored bboxes
+        im = Image.fromarray(norm).convert("RGB")#convert RGB for colored bboxes
         draw = ImageDraw.Draw(im)
         draw.rectangle(points, outline='#ff0000')
         #draw bbox of ground truth
