@@ -19,19 +19,24 @@ from keras.preprocessing.image import ImageDataGenerator
 import tqdm
 import tqdm.auto
 tqdm.tqdm = tqdm.auto.tqdm
-#from keras.callbacks import TensorBoard
 
 #tf.enable_eager_execution() #comment this out if causing errors
 tf.logging.set_verbosity(tf.logging.DEBUG)
 
-"""
-NOTES:
-use tf.image.nonMaxSuppression (perform non max sup on of bounding boxes of intersection over the union)
+###             SET MODEL CONFIGURATIONS             ### 
+augment = False
+step_size = 0.000001
+lambda_coord = 5
+BATCH_SIZE = 5
+num_epochs = 1
+shape_path = 'trained_model/model_shape.json'
+weight_path = 'trained_model/model_weights.h5'
+tb_graph = False
+tb_update_freq = 'batch'
+tb_write_gradients = True
+tb_histogram_freq = 2
 
-use tf.image.draw_bounding_boxes (draws bb points on images in passed in tensor objects of pts and imgs)
-
-"""
-
+            
 ###         GET THE DATASET AND PREPROCESS IT        ###
 
 # relative paths to image data and labels
@@ -91,7 +96,7 @@ num_test_examples = len(test_imgs)
 # create generator for training the model in batches
 generator = ImageDataGenerator(rotation_range=0, zoom_range=0,
 	width_shift_range=0, height_shift_range=0, shear_range=0,
-	horizontal_flip=False, fill_mode="nearest")
+	horizontal_flip=augment, fill_mode="nearest")
 #TODO: use data augment to flip? (change steps per batch so all images get seen in an epoch!)
 
 
@@ -171,7 +176,6 @@ def YOLO_loss(y_true, y_pred):
     x_RP = y_pred[:, 2] # right x coord
     y_LP = y_pred[:, 3] # lower y coord 
 
-    lambda_coord = 5
 
     """
     # calculate the mean squared error for mid_points
@@ -200,18 +204,22 @@ def YOLO_loss(y_true, y_pred):
     union_double = tf.math.add(tf.math.multiply(tf.math.subtract(x_RP, x_LP), tf.math.subtract(y_LP,y_UP)),
                                tf.math.multiply(tf.math.subtract(x_RT, x_LT), tf.math.subtract(y_LT, y_UT)))
     union = tf.math.abs(tf.math.subtract(union_double, intersection))
-    #iou = tf.math.divide(intersection, union) #TODO: IOU actually increases as match is better; it should decrease
-    #invert and add epsilon value (some super tiny thing)
-    epsilon = 0.00001
-    iou = tf.math.divide(union, tf.math.add(intersection, epsilon))
+    
+    iou = tf.math.divide(intersection, union) #simple IOU
+    adjusted_iou = tf.math.negative(tf.math.log(iou))
+    #special IOU loss      https://arxiv.org/pdf/1608.01471.pdf
     
     #loss = tf.math.add(tf.math.multiply(tf.math.add(first_term, second_term), lambda_coord), iou)
     # mse
     mse = tf.keras.metrics.mean_squared_error(y_true, y_pred)
-    loss = tf.math.add(tf.math.multiply(mse, lambda_coord), iou)
-    return mse
+    loss = tf.math.add(tf.math.multiply(mse, lambda_coord), adjusted_iou)
+    return adjusted_iou
 
 def IOU_metric(y_true, y_pred):
+    """
+    Compute the simple, straightforward IOU of the true and predicted bounding boxes.
+    Should be in a 0-1 range, 1 being the best match of bounding boxes, 0 being worst.
+    """
     x_LT = y_true[:, 0] # left x coord
     y_UT = y_true[:, 1] # upper y coord
     x_RT = y_true[:, 2] # right x coord
@@ -221,22 +229,26 @@ def IOU_metric(y_true, y_pred):
     y_UP = y_pred[:, 1] # upper y coord
     x_RP = y_pred[:, 2] # right x coord
     y_LP = y_pred[:, 3] # lower y coord
+    
     # calculate the intersection over the union
+    """
+    intersection = K.sum(K.abs(y_true * y_pred), axis=-1)
+    union = K.sum((y_true,-1) + K.sum(y_pred,-1) - intersection
+    """
     intersection = tf.math.multiply(tf.math.abs(tf.math.subtract(x_LT, x_RP)),
                                     tf.math.abs(tf.math.subtract(y_UT, y_LP)))
     union_double = tf.math.add(tf.math.multiply(tf.math.subtract(x_RP, x_LP),
                 tf.math.subtract(y_LP,y_UP)),tf.math.multiply(tf.math.subtract(x_RT, x_LT),
                           tf.math.subtract(y_LT, y_UT)))
     union = tf.math.abs(tf.math.subtract(union_double, intersection))
-    #iou = tf.math.divide(intersection, union) #TODO: IOU actually increases as match is better; it should decrease
-    #invert true iou equation and add epsilon to intersection to prevent divide-by-0 error
-    epsilon = 0.00001
-    iou = tf.math.divide(union, tf.math.add(intersection, epsilon))
+    
+    iou = tf.math.divide(intersection, union)
     return iou
     
 
-#TODO: adjust parameters for adam optimizer; change learning rate?
-model.compile(optimizer='adam',
+
+# small step size works best
+model.compile(optimizer=tf.keras.optimizers.Adam(lr=step_size),
               loss=YOLO_loss,
               metrics=['accuracy', IOU_metric])
 
@@ -254,17 +266,19 @@ high learning rate our model often diverges due to unstable gradients.
 We continue training with 10e-2 for 75 epochs, then 10e-3 for 30 epochs,
 and finally 10e-4 for 30 epochs
 """
-BATCH_SIZE = 5
-num_epochs = 5
 callbacks = []
 
 # train with tensorboard to visualize training on localhost:6006. Call from terminal with:
-#tensorboard --logdir=/full/path/to/logs
+#>tensorboard --logdir=/full/path/to/logs
 callbacks.append(tf.keras.callbacks.TensorBoard(log_dir='logs/{}'.format(time.time()),
-                                                 write_graph=False,
+                                                 write_graph=tb_graph,
                                                  batch_size=BATCH_SIZE,
-                                                 update_freq='batch'))
-# save model at checkpoints
+                                                 update_freq=tb_update_freq))
+""",
+                                                 histogram_freq=tb_histogram_freq,
+                                                 write_grads=tb_write_gradients))
+"""
+# save model at checkpoints TODO: this doesn't seem to be working
 callbacks.append(tf.keras.callbacks.ModelCheckpoint('checkpoints/best_weights.h5',
                                     monitor='val_loss', verbose=0, save_best_only=True,
                                     save_weights_only=True, mode='auto', period=1))
@@ -279,17 +293,14 @@ model.fit_generator(generator.flow(train_imgs, train_points, batch_size=BATCH_SI
 ###                 EVALUATE THE MODEL               ###
 
 # evaluate the accuracy of the trained model using the test datasets
-loss, accuracy = model.evaluate(test_imgs, test_points)
-print("Final loss:{}\nFinal accuracy:{}".format(loss, accuracy))
+metrics = model.evaluate(test_imgs, test_points)
+print("Final loss:{}\nFinal accuracy:{}".format(metrics[0], metrics[1]))
 
 
 
 ###                 SAVING THE MODEL                 ###
 
 # save the model so that it can be loaded without training later
-shape_path = 'trained_model/model_shape.json'
-weight_path = 'trained_model/model_weights.h5'
-
 # serialize model to JSON
 model_json = model.to_json()
 with open(shape_path, "w") as json_file:
