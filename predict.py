@@ -159,7 +159,7 @@ def main():
                        int(data_frame['end_y'][i])]
         draw.rectangle(true_points, outline='#00ff00') 
         
-        im.show() #TODO: loading this way causes the display range to be bad, normalized is too squeezed a range (compare to command line 'display')
+        im.show() #TODO: PIL causes the display range to be bad
         time.sleep(1) #sleep to let user close image
         
 
