@@ -1,6 +1,5 @@
 # Import tensorflow
 import tensorflow as tf
-import tensorflow_datasets as tfds
 import keras.backend as K
 
 # Helper libraries
@@ -10,7 +9,7 @@ import pandas as pd
 import pydicom
 import os
 import sys
-import random
+import time
 
 # Imports for dataset manipulation
 from sklearn.model_selection import train_test_split
@@ -20,8 +19,9 @@ from keras.preprocessing.image import ImageDataGenerator
 import tqdm
 import tqdm.auto
 tqdm.tqdm = tqdm.auto.tqdm
+#from keras.callbacks import TensorBoard
 
-tf.enable_eager_execution() #comment this out if causing errors
+#tf.enable_eager_execution() #comment this out if causing errors
 tf.logging.set_verbosity(tf.logging.DEBUG)
 
 """
@@ -92,6 +92,7 @@ num_test_examples = len(test_imgs)
 generator = ImageDataGenerator(rotation_range=0, zoom_range=0,
 	width_shift_range=0, height_shift_range=0, shear_range=0,
 	horizontal_flip=False, fill_mode="nearest")
+#TODO: use data augment to flip? (change steps per batch so all images get seen in an epoch!)
 
 
 print("Data preprocessing complete\n")
@@ -100,40 +101,40 @@ print("Data preprocessing complete\n")
 ###            DEFINITION OF MODEL SHAPE             ###
 
 model = tf.keras.Sequential([
-    tf.keras.layers.Conv2D(64, (7, 7), padding='same', activation=tf.nn.leaky_relu,
+    tf.keras.layers.Conv2D(64, (7, 7), padding='same', activation=tf.nn.relu,
                                strides=2, input_shape=(512, 512, 1)),
     tf.keras.layers.MaxPooling2D((2,2), strides=2),
 
-    tf.keras.layers.Conv2D(192, (3,3), padding='same', activation=tf.nn.leaky_relu),
+    tf.keras.layers.Conv2D(192, (3,3), padding='same', activation=tf.nn.relu),
     tf.keras.layers.MaxPooling2D((2,2), strides=2),
 
-    tf.keras.layers.Conv2D(128, (1,1), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(256, (3,3), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.leaky_relu),
+    tf.keras.layers.Conv2D(128, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(256, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.relu),
     tf.keras.layers.MaxPooling2D((2,2), strides=2),
 
-    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(512, (1,1), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.leaky_relu),
+    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(256, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
     tf.keras.layers.MaxPooling2D((2,2), strides=2),
 
-    tf.keras.layers.Conv2D(512, (1,1), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(512, (1,1), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(1024, (3,3), padding='same', strides=2, activation=tf.nn.leaky_relu),
+    tf.keras.layers.Conv2D(512, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(512, (1,1), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', strides=2, activation=tf.nn.relu),
 
-    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.leaky_relu),
-    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.leaky_relu),
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
+    tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
 
     tf.keras.layers.Flatten(), #flatten images into array for the fully connnected layers
 #    tf.keras.layers.Dense(1024, activation=tf.nn.sigmoid),
@@ -152,10 +153,13 @@ learning of the  normalized range of the output.
 all other layers use the following leaky rectified linear activation:
 x if x>0 else 0.1*x
 (i think tf.nn.leaky_relu has default of 0.2 instead of 0.1)
+
+leaky_relu gets us worse accuracy than regular relu
 """
 
 # custom loss function using aspects of relevant information from the YOLO paper
 def YOLO_loss(y_true, y_pred):
+
     # extract points from tensors
     x_LT = tf.math.minimum(y_true[:, 0], y_true[:, 2])
     y_UT = tf.math.minimum(y_true[:, 1], y_true[:, 3])
@@ -168,27 +172,6 @@ def YOLO_loss(y_true, y_pred):
     y_LP = tf.math.maximum(y_pred[:, 1], y_pred[:, 3])
 
     lambda_coord = 5
-
-    # calculate the mean squared error
-    x_Pmid = tf.math.add(x_LP, tf.math.divide(tf.math.subtract(x_RP, x_LP), 2))
-    x_Tmid = tf.math.add(x_LT, tf.math.divide(tf.math.subtract(x_RT, x_LT), 2))
-    y_Pmid = tf.math.add(y_UP, tf.math.divide(tf.math.subtract(y_LP, y_UP), 2))
-    y_Tmid = tf.math.add(y_UT, tf.math.divide(tf.math.subtract(y_LT, y_UT), 2))
-
-    x_mid_sqdiff = tf.math.square(tf.math.subtract(x_Pmid, x_Tmid))
-    y_mid_sqdiff = tf.math.square(tf.math.subtract(y_Pmid, y_Tmid))
-
-    first_term = tf.math.add(x_mid_sqdiff, y_mid_sqdiff)
-
-    x_Pwidth = tf.math.sqrt(tf.math.abs(tf.math.subtract(x_RP, x_LP)))
-    x_Twidth = tf.math.sqrt(tf.math.abs(tf.math.subtract(x_RT, x_LT)))
-    y_Pheight = tf.math.sqrt(tf.math.abs(tf.math.subtract(y_UP, y_LP)))
-    y_Theight = tf.math.sqrt(tf.math.abs(tf.math.subtract(y_UT, y_LT)))
-
-    second_term = tf.math.add(tf.math.square(tf.math.subtract(x_Pwidth,  x_Twidth)),
-                              tf.math.square(tf.math.subtract(y_Pheight, y_Theight)))
-
-    # calculate the intersection over the union
 
     xL_pairwise_gt = K.greater(x_LT, x_LP)
     yU_pairwise_gt = K.greater(y_UT, y_UP)
@@ -235,11 +218,33 @@ def YOLO_loss(y_true, y_pred):
 
     return iou
 
+def IOU_metric(y_true, y_pred):
+    x_LT = y_true[:, 0] # left x coord
+    y_UT = y_true[:, 1] # upper y coord
+    x_RT = y_true[:, 2] # right x coord
+    y_LT = y_true[:, 3] # lower y coord
+    # predicted points
+    x_LP = y_pred[:, 0] # left x coord
+    y_UP = y_pred[:, 1] # upper y coord
+    x_RP = y_pred[:, 2] # right x coord
+    y_LP = y_pred[:, 3] # lower y coord
+    # calculate the intersection over the union
+    intersection = tf.math.multiply(tf.math.abs(tf.math.subtract(x_LT, x_RP)),
+                                    tf.math.abs(tf.math.subtract(y_UT, y_LP)))
+    union_double = tf.math.add(tf.math.multiply(tf.math.subtract(x_RP, x_LP),
+                tf.math.subtract(y_LP,y_UP)),tf.math.multiply(tf.math.subtract(x_RT, x_LT),
+                          tf.math.subtract(y_LT, y_UT)))
+    union = tf.math.abs(tf.math.subtract(union_double, intersection))
+    #iou = tf.math.divide(intersection, union) #TODO: IOU actually increases as match is better; it should decrease
+    #invert true iou equation and add epsilon to intersection to prevent divide-by-0 error
+    epsilon = 0.00001
+    iou = tf.math.divide(union, tf.math.add(intersection, epsilon))
+    return iou
 
 #TODO: adjust parameters for adam optimizer; change learning rate?
 model.compile(optimizer='adam',
               loss=YOLO_loss,
-              metrics=['accuracy'])
+              metrics=['accuracy', IOU_metric])
 
 #print(model.summary()) #see the shape of the model
 
@@ -256,23 +261,46 @@ We continue training with 10e-2 for 75 epochs, then 10e-3 for 30 epochs,
 and finally 10e-4 for 30 epochs
 """
 BATCH_SIZE = 5
-num_epochs = 1
+num_epochs = 5
+callbacks = []
 
-print('fitting the model\n')
-model.fit_generator(generator.flow(train_imgs, train_points, batch_size=BATCH_SIZE), epochs=num_epochs, \
-    steps_per_epoch=(num_train_examples // BATCH_SIZE))
+# train with tensorboard to visualize training on localhost:6006. Call from terminal with:
+#tensorboard --logdir=/full/path/to/logs
+callbacks.append(tf.keras.callbacks.TensorBoard(log_dir='logs/{}'.format(time.time()),
+                                                 write_graph=False,
+                                                 batch_size=BATCH_SIZE,
+                                                 update_freq='batch'))
+# save model at checkpoints
+callbacks.append(tf.keras.callbacks.ModelCheckpoint('checkpoints/best_weights.h5',
+                                    monitor='val_loss', verbose=0, save_best_only=True,
+                                    save_weights_only=True, mode='auto', period=1))
+
+print('Fitting the model\n')
+model.fit_generator(generator.flow(train_imgs, train_points, batch_size=BATCH_SIZE),
+                        callbacks=callbacks, epochs=num_epochs,
+                        steps_per_epoch=(num_train_examples // BATCH_SIZE))
 
 
 
 ###                 EVALUATE THE MODEL               ###
 
-#evaluate the accuracy of the trained model using the test datasets
+# evaluate the accuracy of the trained model using the test datasets
 loss, accuracy = model.evaluate(test_imgs, test_points)
 print("Final loss:{}\nFinal accuracy:{}".format(loss, accuracy))
 
 
 
 ###                 SAVING THE MODEL                 ###
+
 # save the model so that it can be loaded without training later
-save_path = 'trained_model/cancer_detector.h5'
-model.save(save_path) #save entire model as HDF5 model
+shape_path = 'trained_model/model_shape.json'
+weight_path = 'trained_model/model_weights.h5'
+
+# serialize model to JSON
+model_json = model.to_json()
+with open(shape_path, "w") as json_file:
+    json_file.write(model_json)
+# serialize weights to HDF5
+model.save_weights(weight_path)
+print("Saved model to disk")
+

@@ -1,33 +1,45 @@
 # Import tensorflow 
 import tensorflow as tf
-import tensorflow_datasets as tfds
 import keras
 
 # Imports for visualizing predictions
 import numpy as np
-import matplotlib
-matplotlib.use('PS') #prevent import error due to venv
-import matplotlib.pyplot as plt
+import pydicom
 from skimage.transform import resize
+import PIL
+from PIL import Image, ImageDraw, ImageColor
 
 # Helper imports
 import sys, os
+import pandas as pd
+import time
+
+# Path variables 
+shape_path = 'trained_model/model_shape.json'
+weights_path = 'trained_model/model_weights.h5'
+CSV_PATH = 'CCC_clean.csv'
+IMAGE_BASE_PATH = '../data/'
 
 # Global variables
-load_path = 'trained_model/cancer_detector.h5'
 img_dims = 512
+#/home/niehusst/vision262/project/YOLO/data/TCGA-61-2012/1.3.6.1.4.1.14519.5.2.1.6450.4007.336565074650874040486975138397/18
 
-
-def load_model(path):
+def load_model(shape_file, weights_file):
     """
     Load a tensorflow/keras model from an HDF5 file found at provided path.
     @param path - path to valid HDF5 file of YOLO cancer detection model
     @return model - a fully trained tf/keras model
     """
-    print("Starting to load model...", end="")
-    model = keras.models.load_model(path)
+    print("Loading model from disk..."),
+    # load json and create model
+    json_file = open(shape_file, 'r')
+    loaded_model_json = json_file.read()
+    json_file.close()
+    loaded_model = tf.keras.models.model_from_json(loaded_model_json)
+    # load weights into new model
+    loaded_model.load_weights(weights_file)
     print("Complete!")
-    return model
+    return loaded_model
 
 def is_dicom(im_path):
     """
@@ -35,8 +47,14 @@ def is_dicom(im_path):
     @param im_path - string path to an image file
     @return - boolean, True if is a dicom image, else False
     """
-    # if doesn't end with jpg/png
-    pass
+    # get file extension
+    path, ext = os.path.splitext(im_path)
+    
+    # if file extension is empty or is .dcm, assume DICOM file
+    if ext == ".dcm" or ext == "":
+        return True
+    else:
+        return False
 
 def load_image(im_path):
     """
@@ -64,39 +82,69 @@ def pre_process(img):
     im_adjusted = resize(img, (img_dims,img_dims), anti_aliasing=True,\
                              preserve_range=True)
 
-    #TODO: ensure image is grayscale (only has 1 channel)
+    # ensure image is grayscale (only has 1 channel)
     im_adjusted = im_adjusted.astype(np.float32)
+    if len(im_adjusted.shape) >= 3:
+        # squash 3 channel image
+        im_adjusted = np.dot(im_adjusted[...,:3], [0.299, 0.587, 0.114])
     
-    #TODO: normalize the image to a 0-1 range
+    # normalize the image to a 0-1 range
+    if not np.amax(im_adjusted) < 1: # check that image isn't already normalized
+        if np.amin(im_adjusted) < 0:
+            im_adjusted += np.amin(im_adjusted)
+        im_adjusted /= np.amax(im_adjusted)
     
     # model requires 4D input; shape it to expected dims
     im_adjusted = np.reshape(im_adjusted, (1, img_dims, img_dims, 1))
     return im_adjusted
 
-def main(argv):
+def main():
+    """
+    Loads a saved Keras model from the trained_model/ directory and loads the
+    image and ground truth points from the loaded dataset. It uses the 
+    model to make a bounding box prediction on the input image, and displays the
+    image with the predicted and true bounding boxs.
+    """
     # load a pretrained model from HDF5 file
-    model = load_model(load_path)
+    model = load_model(shape_path, weights_path)
 
-    # load image from argv
-    img = load_image(argv[1])
+    # load dataset for iterating paths
+    data_frame = pd.read_csv(CSV_PATH)
+
+    # iterate over all image paths
+    for i in range(len(data_frame['imgPath'])):
+        # load image from argv
+        img = load_image(IMAGE_BASE_PATH + data_frame['imgPath'][i])
     
-    # ensure image fits model input dimensions
-    img = pre_process(img)
+        # ensure image fits model input dimensions
+        preprocessed_img = pre_process(img)
     
-    # make a prediction on the loaded image
-    output = model.predict(img, batch_size=1)
-    print('first prediction was {}'.format(output[0]))
+        # make a prediction on the loaded image
+        output = model.predict(preprocessed_img, batch_size=1)
+    
+        # un-normalize prediction to get plotable points
+        points = np.array(output[0]) * 512
+        points = list(points.astype(np.int32))
 
-    # display prediction on image (with ground truth if training data???)
-    #TODO:use matplotlib to draw the bb? remember predicted pointes are dimension normalized
-
+        # draw bbox of predicted points
+        im = Image.fromarray(img).convert("RGB") #convert RGB for colored bboxes
+        draw = ImageDraw.Draw(im)
+        draw.rectangle(points, outline='#ff0000')
+        #draw bbox of ground truth
+        true_points = [int(data_frame['start_x'][i]),
+                       int(data_frame['start_y'][i]),
+                       int(data_frame['end_x'][i]),
+                       int(data_frame['end_y'][i])]
+        draw.rectangle(true_points, outline='#00ff00') 
+        
+        im.show() #TODO: loading this way causes the display range to be bad, normalized is too squeezed a range (compare to command line 'display')
+        time.sleep(1) #sleep to let user close image
+        
 
 """
 A program to use the trained and saved YOLO cancer detection model to make a 
-bounding box prediction on a single image.
+bounding box prediction one image at time from the dataset specified by the 
+data path global, iterating and showing ground truth bbox as well
 """
 if __name__ == '__main__':
-    if len(sys.argv) < 2:
-        print("Usage: " + sys.argv[0] + " <image file path>")
-    else:
-        main(sys.argv)
+    main()
