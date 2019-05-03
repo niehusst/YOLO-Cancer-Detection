@@ -23,18 +23,30 @@ tqdm.tqdm = tqdm.auto.tqdm
 #tf.enable_eager_execution() #comment this out if causing errors
 tf.logging.set_verbosity(tf.logging.DEBUG)
 
-###             SET MODEL CONFIGURATIONS             ### 
-augment = False
-step_size = 0.000001
+
+
+###             SET MODEL CONFIGURATIONS             ###
+# Data Augmentation
+mirror_im = False
+
+# Loss
 lambda_coord = 5
-BATCH_SIZE = 5
+
+# Learning
+step_size = 0.000001
+BATCH_SIZE = 1
 num_epochs = 1
+
+# Saving
 shape_path = 'trained_model/model_shape.json'
 weight_path = 'trained_model/model_weights.h5'
+
+# TensorBoard 
 tb_graph = False
 tb_update_freq = 'batch'
-tb_write_gradients = True
-tb_histogram_freq = 2
+#tb_write_gradients = True
+#tb_histogram_freq = 2
+
 
             
 ###         GET THE DATASET AND PREPROCESS IT        ###
@@ -43,7 +55,7 @@ tb_histogram_freq = 2
 CSV_PATH = 'CCC_clean.csv'
 IMAGE_BASE_PATH = '../data/'
 
-print("Loading and processing data\n")
+print("Loading and processing data\n")                     #TODO: maybe elimanate non-radiologist data? maybe that's fucking up model
 
 data_frame = pd.read_csv(CSV_PATH)
 
@@ -96,11 +108,11 @@ num_test_examples = len(test_imgs)
 # create generator for training the model in batches
 generator = ImageDataGenerator(rotation_range=0, zoom_range=0,
 	width_shift_range=0, height_shift_range=0, shear_range=0,
-	horizontal_flip=augment, fill_mode="nearest")
-#TODO: use data augment to flip? (change steps per batch so all images get seen in an epoch!)
-
+	horizontal_flip=mirror_im, fill_mode="nearest")
+#TODO: use data augment to flip? (change steps per batch so all images get seen in an epoch!) also the labels would need to be editted to be flipped as well????
 
 print("Data preprocessing complete\n")
+
 
 
 ###            DEFINITION OF MODEL SHAPE             ###
@@ -147,6 +159,9 @@ model = tf.keras.Sequential([
 #    tf.keras.layers.Dense(4096, activation=tf.keras.activations.linear),
     tf.keras.layers.Dense(4, activation=tf.nn.sigmoid) # 4 outputs: predict 4 points for a bounding box
 ])
+#TODO: try tanh activation instead of sigmoid
+#TODO: add tf.keras.layers.BatchNormalization layers before max pooling layers?
+
 """
 Our final layer predicts both class probabilities and
 bounding box coordinates. We normalize the bounding box
@@ -175,9 +190,7 @@ def YOLO_loss(y_true, y_pred):
     y_UP = y_pred[:, 1] # upper y coord
     x_RP = y_pred[:, 2] # right x coord
     y_LP = y_pred[:, 3] # lower y coord 
-
-
-    """
+    
     # calculate the mean squared error for mid_points
     x_Pmid = tf.math.add(x_LP, tf.math.divide(tf.math.subtract(x_RP, x_LP), 2))
     x_Tmid = tf.math.add(x_LT, tf.math.divide(tf.math.subtract(x_RT, x_LT), 2))
@@ -197,7 +210,7 @@ def YOLO_loss(y_true, y_pred):
 
     second_term = tf.math.add(tf.math.square(tf.math.subtract(x_Pwidth,  x_Twidth)),
                               tf.math.square(tf.math.subtract(y_Pheight, y_Theight)))
-    """
+    
     # calculate the intersection over the union
     intersection = tf.math.multiply(tf.math.abs(tf.math.subtract(x_LT, x_RP)),
                                         tf.math.abs(tf.math.subtract(y_UT, y_LP)))
@@ -206,13 +219,14 @@ def YOLO_loss(y_true, y_pred):
     union = tf.math.abs(tf.math.subtract(union_double, intersection))
     
     iou = tf.math.divide(intersection, union) #simple IOU
-    adjusted_iou = tf.math.negative(tf.math.log(iou))
+    iou2 = IOU_metric(y_true, y_pred)
+    adjusted_iou = tf.math.negative(tf.math.log(iou2))
     #special IOU loss      https://arxiv.org/pdf/1608.01471.pdf
     
     #loss = tf.math.add(tf.math.multiply(tf.math.add(first_term, second_term), lambda_coord), iou)
     # mse
     mse = tf.keras.metrics.mean_squared_error(y_true, y_pred)
-    loss = tf.math.add(tf.math.multiply(mse, lambda_coord), adjusted_iou)
+    loss = tf.math.multiply(tf.math.add(first_term, second_term), lambda_coord)
     return adjusted_iou
 
 def IOU_metric(y_true, y_pred):
@@ -231,18 +245,26 @@ def IOU_metric(y_true, y_pred):
     y_LP = y_pred[:, 3] # lower y coord
     
     # calculate the intersection over the union
-    """
-    intersection = K.sum(K.abs(y_true * y_pred), axis=-1)
-    union = K.sum((y_true,-1) + K.sum(y_pred,-1) - intersection
-    """
-    intersection = tf.math.multiply(tf.math.abs(tf.math.subtract(x_LT, x_RP)),
-                                    tf.math.abs(tf.math.subtract(y_UT, y_LP)))
-    union_double = tf.math.add(tf.math.multiply(tf.math.subtract(x_RP, x_LP),
-                tf.math.subtract(y_LP,y_UP)),tf.math.multiply(tf.math.subtract(x_RT, x_LT),
-                          tf.math.subtract(y_LT, y_UT)))
-    union = tf.math.abs(tf.math.subtract(union_double, intersection))
     
-    iou = tf.math.divide(intersection, union)
+    # determine the (x, y)-coordinates of the intersection rectangle
+    xA = K.maximum(y_pred[:,0], y_true[:,0])
+    yA = K.maximum(y_pred[:,1], y_true[:,1])
+    xB = K.minimum(y_pred[:,2], y_true[:,2]) 
+    yB = K.minimum(y_pred[:,3], y_true[:,3])
+ 
+    # compute the area of intersection rectangle
+    interArea = K.maximum(0.0, xB - xA + 1) * K.maximum(0.0, yB - yA + 1)
+ 
+    # compute the area of both the prediction and ground-truth
+    # rectangles
+    boxAArea = (y_pred[:,2] - y_pred[:,0] + 1) * (y_pred[:,3] - y_pred[:,1] + 1)
+    boxBArea = (y_true[:,2] - y_true[:,0] + 1) * (y_true[:,3] - y_true[:,1] + 1)
+ 
+    # compute the intersection over union by taking the intersection
+    # area and dividing it by the sum of prediction + ground-truth
+    # areas - the interesection area
+    iou = interArea / tf.cast(boxAArea + boxBArea - interArea, tf.float32)
+ 
     return iou
     
 
@@ -250,7 +272,7 @@ def IOU_metric(y_true, y_pred):
 # small step size works best
 model.compile(optimizer=tf.keras.optimizers.Adam(lr=step_size),
               loss=YOLO_loss,
-              metrics=['accuracy', IOU_metric])
+              metrics=['accuracy', IOU_metric, 'mse'])
 
 #print(model.summary()) #see the shape of the model
 
