@@ -46,7 +46,7 @@ data_frame = pd.read_csv(CSV_PATH)
 points = zip(data_frame['start_x'], data_frame['start_y'], \
                        data_frame['end_x'], data_frame['end_y'])
 img_paths = data_frame['imgPath']
-# try to classify the area of the body the tumor was in too???? using 'anatomy' col 
+# try to classify the area of the body the tumor was in too???? using 'anatomy' col
 
 
 # do some preprocessing of the data
@@ -64,7 +64,7 @@ def normalize_image(img):
 
 # normalize the ground truth bounding box labels wrt image dimensions
 def normalize_points(points):
-    imDims = 512.0 #each image is 512x512 
+    imDims = 512.0 #each image is 512x512
     points = list(points)
     for i in range(len(points)):
         points[i] /= imDims
@@ -72,7 +72,7 @@ def normalize_points(points):
 
 # apply preprocessing functions
 points = map(normalize_points, points)
-imgs = map(path_to_image, img_paths) 
+imgs = map(path_to_image, img_paths)
 imgs = map(normalize_image, imgs)
 
 # reshape input image data to expected 4D shape and cast all data to np arrays
@@ -157,15 +157,15 @@ x if x>0 else 0.1*x
 # custom loss function using aspects of relevant information from the YOLO paper
 def YOLO_loss(y_true, y_pred):
     # extract points from tensors
-    x_LT = y_true[:, 0]
-    y_UT = y_true[:, 1]
-    x_RT = y_true[:, 2]
-    y_LT = y_true[:, 3]
+    x_LT = tf.math.minimum(y_true[:, 0], y_true[:, 2])
+    y_UT = tf.math.minimum(y_true[:, 1], y_true[:, 3])
+    x_RT = tf.math.maximum(y_true[:, 0], y_true[:, 2])
+    y_LT = tf.math.maximum(y_true[:, 1], y_true[:, 3])
 
-    x_LP = y_pred[:, 0]
-    y_UP = y_pred[:, 1]
-    x_RP = y_pred[:, 2]
-    y_LP = y_pred[:, 3]
+    x_LP = tf.math.minimum(y_pred[:, 0], y_pred[:, 2])
+    y_UP = tf.math.minimum(y_pred[:, 1], y_pred[:, 3])
+    x_RP = tf.math.maximum(y_pred[:, 0], y_pred[:, 2])
+    y_LP = tf.math.maximum(y_pred[:, 1], y_pred[:, 3])
 
     lambda_coord = 5
 
@@ -189,15 +189,51 @@ def YOLO_loss(y_true, y_pred):
                               tf.math.square(tf.math.subtract(y_Pheight, y_Theight)))
 
     # calculate the intersection over the union
-    intersection = tf.math.multiply(tf.math.subtract(x_RP, x_LT), tf.math.subtract(y_LP, y_UT))
+
+    xL_pairwise_gt = K.greater(x_LT, x_LP)
+    yU_pairwise_gt = K.greater(y_UT, y_UP)
+
+    xW1_pairwise_int = K.less(x_LT, x_RP)
+    xW1 = K.cast(xW1_pairwise_int, K.floatx())
+
+    xW2_pairwise_int = K.less(x_LP, x_RT)
+    xW2 = K.cast(xW2_pairwise_int, K.floatx())
+
+    yH1_pairwise_int = K.less(y_UT, y_LP)
+    yH1 = K.cast(yH1_pairwise_int, K.floatx())
+
+    yH2_pairwise_int = K.less(y_UP, y_LT)
+    yH2 = K.cast(yH2_pairwise_int, K.floatx())
+
+    x_bin = K.cast(xL_pairwise_gt, K.floatx())
+    y_bin = K.cast(yU_pairwise_gt, K.floatx())
+
+    x_does_intersect   = tf.math.add(tf.math.multiply(x_bin, xW1),
+                                     tf.math.multiply(tf.math.subtract(1.0, x_bin), xW2))
+    y_does_intersect   = tf.math.add(tf.math.multiply(y_bin, yH1),
+                                     tf.math.multiply(tf.math.subtract(1.0, y_bin), yH2))
+    box_does_intersect = tf.math.multiply(x_does_intersect, y_does_intersect)
+
+    a = tf.math.minimum(tf.math.subtract(x_RP, x_LT), tf.math.subtract(x_RP, x_LP))
+    b = tf.math.minimum(tf.math.subtract(x_RT, x_LP), tf.math.subtract(x_RT, x_LT))
+    c = tf.math.minimum(tf.math.subtract(y_LP, y_UT), tf.math.subtract(y_LP, y_UP))
+    d = tf.math.minimum(tf.math.subtract(y_LT, y_UP), tf.math.subtract(y_LT, y_UT))
+
+
+    intersection_width  = tf.math.add(tf.math.multiply(x_bin, a),
+                                      tf.math.multiply(tf.math.subtract(1.0, x_bin), b))
+    intersection_height = tf.math.add(tf.math.multiply(y_bin, c),
+                                      tf.math.multiply(tf.math.subtract(1.0, y_bin), d))
+
+    intersection = tf.math.multiply(tf.math.multiply(intersection_width, intersection_height), box_does_intersect)
     union_double = tf.math.add(tf.math.multiply(tf.math.subtract(x_RP, x_LP), tf.math.subtract(y_LP,y_UP)),
                                tf.math.multiply(tf.math.subtract(x_RT, x_LT), tf.math.subtract(y_LT, y_UT)))
     union = tf.math.subtract(union_double, intersection)
-    iou = tf.math.divide(intersection, union)
+    iou = K.mean(tf.math.divide(intersection, union))
 
     loss = tf.math.add(tf.math.multiply(tf.math.add(first_term, second_term), lambda_coord), iou)
 
-    return loss
+    return iou
 
 
 #TODO: adjust parameters for adam optimizer; change learning rate?
