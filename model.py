@@ -63,7 +63,7 @@ data_frame = pd.read_csv(CSV_PATH)
 points = zip(data_frame['start_x'], data_frame['start_y'], \
                        data_frame['end_x'], data_frame['end_y'])
 img_paths = data_frame['imgPath']
-# try to classify the area of the body the tumor was in too???? using 'anatomy' col 
+# try to classify the area of the body the tumor was in too???? using 'anatomy' col
 
 
 # do some preprocessing of the data
@@ -81,7 +81,7 @@ def normalize_image(img):
 
 # normalize the ground truth bounding box labels wrt image dimensions
 def normalize_points(points):
-    imDims = 512.0 #each image is 512x512 
+    imDims = 512.0 #each image is 512x512
     points = list(points)
     for i in range(len(points)):
         points[i] /= imDims
@@ -89,7 +89,7 @@ def normalize_points(points):
 
 # apply preprocessing functions
 points = map(normalize_points, points)
-imgs = map(path_to_image, img_paths) 
+imgs = map(path_to_image, img_paths)
 imgs = map(normalize_image, imgs)
 
 # reshape input image data to expected 4D shape and cast all data to np arrays
@@ -172,101 +172,129 @@ We use a sigmoid activation function for the final layer to facilitate
 learning of the  normalized range of the output.
 all other layers use the following leaky rectified linear activation:
 x if x>0 else 0.1*x
-(i think tf.nn.leaky_relu has default of 0.2 instead of 0.1) 
+(i think tf.nn.leaky_relu has default of 0.2 instead of 0.1)
 
 leaky_relu gets us worse accuracy than regular relu
 """
 
 # custom loss function using aspects of relevant information from the YOLO paper
 def YOLO_loss(y_true, y_pred):
-    # extract points from tensors:
-    # ground truth label points
-    x_LT = y_true[:, 0] #  left x coord
-    y_UT = y_true[:, 1] # upper y coord
-    x_RT = y_true[:, 2] # right x coord
-    y_LT = y_true[:, 3] # lower y coord
-    # predicted points
-    x_LP = y_pred[:, 0] #  left x coord
-    y_UP = y_pred[:, 1] # upper y coord
-    x_RP = y_pred[:, 2] # right x coord
-    y_LP = y_pred[:, 3] # lower y coord 
-    
-    # calculate the mean squared error for mid_points
-    x_Pmid = tf.math.add(x_LP, tf.math.divide(tf.math.subtract(x_RP, x_LP), 2))
-    x_Tmid = tf.math.add(x_LT, tf.math.divide(tf.math.subtract(x_RT, x_LT), 2))
-    y_Pmid = tf.math.add(y_UP, tf.math.divide(tf.math.subtract(y_LP, y_UP), 2))
-    y_Tmid = tf.math.add(y_UT, tf.math.divide(tf.math.subtract(y_LT, y_UT), 2))
+    # extract points from tensors
+    x_LT = tf.math.minimum(y_true[:, 0], y_true[:, 2])
+    y_UT = tf.math.minimum(y_true[:, 1], y_true[:, 3])
+    x_RT = tf.math.maximum(y_true[:, 0], y_true[:, 2])
+    y_LT = tf.math.maximum(y_true[:, 1], y_true[:, 3])
 
-    x_mid_sqdiff = tf.math.square(tf.math.subtract(x_Pmid, x_Tmid))
-    y_mid_sqdiff = tf.math.square(tf.math.subtract(y_Pmid, y_Tmid))
+    x_LP = tf.math.minimum(y_pred[:, 0], y_pred[:, 2])
+    y_UP = tf.math.minimum(y_pred[:, 1], y_pred[:, 3])
+    x_RP = tf.math.maximum(y_pred[:, 0], y_pred[:, 2])
+    y_LP = tf.math.maximum(y_pred[:, 1], y_pred[:, 3])
 
-    first_term = tf.math.add(x_mid_sqdiff, y_mid_sqdiff)
 
-    # calculate mean squared error for width and height
-    x_Pwidth = tf.math.sqrt(tf.math.abs(tf.math.subtract(x_RP, x_LP)))
-    x_Twidth = tf.math.sqrt(tf.math.abs(tf.math.subtract(x_RT, x_LT)))
-    y_Pheight = tf.math.sqrt(tf.math.abs(tf.math.subtract(y_UP, y_LP)))
-    y_Theight = tf.math.sqrt(tf.math.abs(tf.math.subtract(y_UT, y_LT)))
+    xL_pairwise_gt = K.greater(x_LT, x_LP)
+    yU_pairwise_gt = K.greater(y_UT, y_UP)
 
-    second_term = tf.math.add(tf.math.square(tf.math.subtract(x_Pwidth,  x_Twidth)),
-                              tf.math.square(tf.math.subtract(y_Pheight, y_Theight)))
-    
-    # calculate the intersection over the union
-    intersection = tf.math.multiply(tf.math.abs(tf.math.subtract(x_LT, x_RP)),
-                                        tf.math.abs(tf.math.subtract(y_UT, y_LP)))
+    xW1_pairwise_int = K.less(x_LT, x_RP)
+    xW1 = K.cast(xW1_pairwise_int, K.floatx())
+
+    xW2_pairwise_int = K.less(x_LP, x_RT)
+    xW2 = K.cast(xW2_pairwise_int, K.floatx())
+
+    yH1_pairwise_int = K.less(y_UT, y_LP)
+    yH1 = K.cast(yH1_pairwise_int, K.floatx())
+
+    yH2_pairwise_int = K.less(y_UP, y_LT)
+    yH2 = K.cast(yH2_pairwise_int, K.floatx())
+
+    x_bin = K.cast(xL_pairwise_gt, K.floatx())
+    y_bin = K.cast(yU_pairwise_gt, K.floatx())
+
+    x_does_intersect   = tf.math.add(tf.math.multiply(x_bin, xW1),
+                                     tf.math.multiply(tf.math.subtract(1.0, x_bin), xW2))
+    y_does_intersect   = tf.math.add(tf.math.multiply(y_bin, yH1),
+                                     tf.math.multiply(tf.math.subtract(1.0, y_bin), yH2))
+    box_does_intersect = tf.math.multiply(x_does_intersect, y_does_intersect)
+
+    a = tf.math.minimum(tf.math.subtract(x_RP, x_LT), tf.math.subtract(x_RP, x_LP))
+    b = tf.math.minimum(tf.math.subtract(x_RT, x_LP), tf.math.subtract(x_RT, x_LT))
+    c = tf.math.minimum(tf.math.subtract(y_LP, y_UT), tf.math.subtract(y_LP, y_UP))
+    d = tf.math.minimum(tf.math.subtract(y_LT, y_UP), tf.math.subtract(y_LT, y_UT))
+
+
+    intersection_width  = tf.math.add(tf.math.multiply(x_bin, a),
+                                      tf.math.multiply(tf.math.subtract(1.0, x_bin), b))
+    intersection_height = tf.math.add(tf.math.multiply(y_bin, c),
+                                      tf.math.multiply(tf.math.subtract(1.0, y_bin), d))
+
+    intersection = tf.math.multiply(tf.math.multiply(intersection_width, intersection_height), box_does_intersect)
     union_double = tf.math.add(tf.math.multiply(tf.math.subtract(x_RP, x_LP), tf.math.subtract(y_LP,y_UP)),
                                tf.math.multiply(tf.math.subtract(x_RT, x_LT), tf.math.subtract(y_LT, y_UT)))
-    union = tf.math.abs(tf.math.subtract(union_double, intersection))
-    
-    iou = tf.math.divide(intersection, union) #simple IOU
-    iou2 = IOU_metric(y_true, y_pred)
-    adjusted_iou = tf.math.negative(tf.math.log(iou2))
-    #special IOU loss      https://arxiv.org/pdf/1608.01471.pdf
-    
-    #loss = tf.math.add(tf.math.multiply(tf.math.add(first_term, second_term), lambda_coord), iou)
-    # mse
-    mse = tf.keras.metrics.mean_squared_error(y_true, y_pred)
-    loss = tf.math.multiply(tf.math.add(first_term, second_term), lambda_coord)
-    return adjusted_iou
+    union = tf.math.subtract(union_double, intersection)
+    iou = K.mean(tf.math.divide(intersection, union))
+
+    loss = tf.negative(tf.log(iou))
+
+    return loss
 
 def IOU_metric(y_true, y_pred):
     """
     Compute the simple, straightforward IOU of the true and predicted bounding boxes.
     Should be in a 0-1 range, 1 being the best match of bounding boxes, 0 being worst.
     """
-    x_LT = y_true[:, 0] # left x coord
-    y_UT = y_true[:, 1] # upper y coord
-    x_RT = y_true[:, 2] # right x coord
-    y_LT = y_true[:, 3] # lower y coord
-    # predicted points
-    x_LP = y_pred[:, 0] # left x coord
-    y_UP = y_pred[:, 1] # upper y coord
-    x_RP = y_pred[:, 2] # right x coord
-    y_LP = y_pred[:, 3] # lower y coord
-    
-    # calculate the intersection over the union
-    
-    # determine the (x, y)-coordinates of the intersection rectangle
-    xA = K.maximum(y_pred[:,0], y_true[:,0])
-    yA = K.maximum(y_pred[:,1], y_true[:,1])
-    xB = K.minimum(y_pred[:,2], y_true[:,2]) 
-    yB = K.minimum(y_pred[:,3], y_true[:,3])
- 
-    # compute the area of intersection rectangle
-    interArea = K.maximum(0.0, xB - xA + 1) * K.maximum(0.0, yB - yA + 1)
- 
-    # compute the area of both the prediction and ground-truth
-    # rectangles
-    boxAArea = (y_pred[:,2] - y_pred[:,0] + 1) * (y_pred[:,3] - y_pred[:,1] + 1)
-    boxBArea = (y_true[:,2] - y_true[:,0] + 1) * (y_true[:,3] - y_true[:,1] + 1)
- 
-    # compute the intersection over union by taking the intersection
-    # area and dividing it by the sum of prediction + ground-truth
-    # areas - the interesection area
-    iou = interArea / tf.cast(boxAArea + boxBArea - interArea, tf.float32)
+    # extract points from tensors
+    x_LT = tf.math.minimum(y_true[:, 0], y_true[:, 2])
+    y_UT = tf.math.minimum(y_true[:, 1], y_true[:, 3])
+    x_RT = tf.math.maximum(y_true[:, 0], y_true[:, 2])
+    y_LT = tf.math.maximum(y_true[:, 1], y_true[:, 3])
+
+    x_LP = tf.math.minimum(y_pred[:, 0], y_pred[:, 2])
+    y_UP = tf.math.minimum(y_pred[:, 1], y_pred[:, 3])
+    x_RP = tf.math.maximum(y_pred[:, 0], y_pred[:, 2])
+    y_LP = tf.math.maximum(y_pred[:, 1], y_pred[:, 3])
+
+
+    xL_pairwise_gt = K.greater(x_LT, x_LP)
+    yU_pairwise_gt = K.greater(y_UT, y_UP)
+
+    xW1_pairwise_int = K.less(x_LT, x_RP)
+    xW1 = K.cast(xW1_pairwise_int, K.floatx())
+
+    xW2_pairwise_int = K.less(x_LP, x_RT)
+    xW2 = K.cast(xW2_pairwise_int, K.floatx())
+
+    yH1_pairwise_int = K.less(y_UT, y_LP)
+    yH1 = K.cast(yH1_pairwise_int, K.floatx())
+
+    yH2_pairwise_int = K.less(y_UP, y_LT)
+    yH2 = K.cast(yH2_pairwise_int, K.floatx())
+
+    x_bin = K.cast(xL_pairwise_gt, K.floatx())
+    y_bin = K.cast(yU_pairwise_gt, K.floatx())
+
+    x_does_intersect   = tf.math.add(tf.math.multiply(x_bin, xW1),
+                                     tf.math.multiply(tf.math.subtract(1.0, x_bin), xW2))
+    y_does_intersect   = tf.math.add(tf.math.multiply(y_bin, yH1),
+                                     tf.math.multiply(tf.math.subtract(1.0, y_bin), yH2))
+    box_does_intersect = tf.math.multiply(x_does_intersect, y_does_intersect)
+
+    a = tf.math.minimum(tf.math.subtract(x_RP, x_LT), tf.math.subtract(x_RP, x_LP))
+    b = tf.math.minimum(tf.math.subtract(x_RT, x_LP), tf.math.subtract(x_RT, x_LT))
+    c = tf.math.minimum(tf.math.subtract(y_LP, y_UT), tf.math.subtract(y_LP, y_UP))
+    d = tf.math.minimum(tf.math.subtract(y_LT, y_UP), tf.math.subtract(y_LT, y_UT))
+
+
+    intersection_width  = tf.math.add(tf.math.multiply(x_bin, a),
+                                      tf.math.multiply(tf.math.subtract(1.0, x_bin), b))
+    intersection_height = tf.math.add(tf.math.multiply(y_bin, c),
+                                      tf.math.multiply(tf.math.subtract(1.0, y_bin), d))
+
+    intersection = tf.math.multiply(tf.math.multiply(intersection_width, intersection_height), box_does_intersect)
+    union_double = tf.math.add(tf.math.multiply(tf.math.subtract(x_RP, x_LP), tf.math.subtract(y_LP,y_UP)),
+                               tf.math.multiply(tf.math.subtract(x_RT, x_LT), tf.math.subtract(y_LT, y_UT)))
+    union = tf.math.subtract(union_double, intersection)
+    iou = K.mean(tf.math.divide(intersection, union))
  
     return iou
-    
 
 
 # small step size works best
@@ -306,7 +334,7 @@ callbacks.append(tf.keras.callbacks.ModelCheckpoint('checkpoints/best_weights.h5
                                     save_weights_only=True, mode='auto', period=1))
 
 print('Fitting the model\n')
-model.fit_generator(generator.flow(train_imgs, train_points, batch_size=BATCH_SIZE), 
+model.fit_generator(generator.flow(train_imgs, train_points, batch_size=BATCH_SIZE),
                         callbacks=callbacks, epochs=num_epochs,
                         steps_per_epoch=(num_train_examples // BATCH_SIZE))
 
