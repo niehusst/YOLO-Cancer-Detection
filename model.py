@@ -198,7 +198,7 @@ model = tf.keras.Sequential([
     tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
 
     tf.keras.layers.Flatten(), #flatten images into array for the fully connnected layers
-#    tf.keras.layers.Dense(1024),
+    tf.keras.layers.Dense(1024),
     #tf.keras.layers.Dropout(0.5), # prevents overfitting for large number of epochs?
 #    tf.keras.layers.Dense(4096, activation=tf.keras.activations.linear),
     tf.keras.layers.Dense(4, activation=tf.nn.sigmoid) # 4 outputs: predict 4 points for a bounding box
