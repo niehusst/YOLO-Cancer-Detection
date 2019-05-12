@@ -17,7 +17,7 @@ import time
 # Path variables 
 shape_path = 'trained_model/model_shape.json'
 weights_path = 'trained_model/model_weights.h5'
-CSV_PATH = 'CCC_clean.csv'
+CSV_PATH = 'label_data/CCC_clean.csv'
 IMAGE_BASE_PATH = '../data/'
 
 # Global variables
@@ -86,6 +86,7 @@ def pre_process(img):
     im_adjusted = im_adjusted.astype(np.float32)
     if len(im_adjusted.shape) >= 3:
         # squash 3 channel image
+        print("squashing 3 channels")
         im_adjusted = np.dot(im_adjusted[...,:3], [0.299, 0.587, 0.114])
     
     # normalize the image to a 0-1 range
