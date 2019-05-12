@@ -38,8 +38,8 @@ mirror_im = False
 lambda_coord = 5
 
 # Learning
-step_size = 0.000001
-BATCH_SIZE = 1
+step_size = 0.00001
+BATCH_SIZE = 5
 num_epochs = 1
 
 # Saving
@@ -125,7 +125,7 @@ the model to predict on them.
 # apply preprocessing functions
 points = map(normalize_points, points)
 imgs = map(path_to_image, img_paths)
-imgs = map(normalize_image, imgs)
+#imgs = map(normalize_image, imgs)
 
 # reshape input image data to 4D shape (as expected by the model)
 # and cast all data to np arrays (just in case)
@@ -198,10 +198,10 @@ model = tf.keras.Sequential([
     tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
 
     tf.keras.layers.Flatten(), #flatten images into array for the fully connnected layers
-    tf.keras.layers.Dense(1024),
+    tf.keras.layers.Dense(256),
     #tf.keras.layers.Dropout(0.5), # prevents overfitting for large number of epochs?
-#    tf.keras.layers.Dense(4096, activation=tf.keras.activations.linear),
-    tf.keras.layers.Dense(4, activation=tf.nn.sigmoid) # 4 outputs: predict 4 points for a bounding box
+    tf.keras.layers.Dense(512, activation=tf.keras.activations.linear),
+    tf.keras.layers.Dense(4, activation=tf.nn.tanh) # 4 outputs: predict 4 points for a bounding box
 ])
 #TODO: try tanh activation instead of sigmoid
 #TODO: add tf.keras.layers.BatchNormalization layers before max pooling layers?
@@ -223,13 +223,39 @@ leaky_relu gets us worse accuracy than regular relu
 
 # custom loss function using aspects of relevant information from the YOLO paper
 def YOLO_loss(y_true, y_pred):
-    # extract points from tensors
-    iou = IOU_metric(y_true, y_pred)
-    epsilon = 0.00001
-    iou = tf.where(tf.equal(tf.zeros_like(iou), iou), epsilon, iou)
-    loss = tf.negative(tf.log(iou))
+    
+    x_LT = y_true[:, 0]
+    y_UT = y_true[:, 1]
+    x_RT = y_true[:, 2]
+    y_LT = y_true[:, 3]
 
-    return loss + tf.keras.losses.mean_squared_error(y_true, y_pred)
+    x_LP = y_pred[:, 0]
+    y_UP = y_pred[:, 1]
+    x_RP = y_pred[:, 2]
+    y_LP = y_pred[:, 3]
+
+
+    x_Pmid = tf.math.add(x_LP, tf.math.divide(tf.math.subtract(x_RP, x_LP), 2))
+    x_Tmid = tf.math.add(x_LT, tf.math.divide(tf.math.subtract(x_RT, x_LT), 2))
+    y_Pmid = tf.math.add(y_UP, tf.math.divide(tf.math.subtract(y_LP, y_UP), 2))
+    y_Tmid = tf.math.add(y_UT, tf.math.divide(tf.math.subtract(y_LT, y_UT), 2))
+
+    x_mid_sqdiff = tf.math.square(tf.math.subtract(x_Pmid, x_Tmid))
+    y_mid_sqdiff = tf.math.square(tf.math.subtract(y_Pmid, y_Tmid))
+    first_term = tf.math.add(x_mid_sqdiff, y_mid_sqdiff)
+
+    x_Pwidth = tf.math.sqrt(tf.math.abs(tf.math.subtract(x_RP, x_LP)))
+    x_Twidth = tf.math.sqrt(tf.math.abs(tf.math.subtract(x_RT, x_LT)))
+    y_Pheight = tf.math.sqrt(tf.math.abs(tf.math.subtract(y_UP, y_LP)))
+    y_Theight = tf.math.sqrt(tf.math.abs(tf.math.subtract(y_UT, y_LT)))
+
+
+
+    second_term = tf.math.add(tf.math.square(tf.math.subtract(x_Pwidth,  x_Twidth)),
+                              tf.math.square(tf.math.subtract(y_Pheight, y_Theight)))
+
+    loss = tf.math.multiply(tf.math.add(first_term, second_term), lambda_coord)
+    return loss #+ tf.keras.losses.mean_squared_error(y_true, y_pred)
 
 def IOU_metric(y_true, y_pred):
     """
@@ -309,75 +335,11 @@ def IOU_metric(y_true, y_pred):
     return iou
 
 
-def IOU3(y_pred, y_true):
-    results = []
-    # set the types so we are sure what type we are using
-    y_true = tf.cast(y_true, tf.float32)
-    y_pred = tf.cast(y_pred, tf.float32)
-
-    # for predicted_bbox in batch:
-
-    # boxTrue
-    x_boxTrue_tleft = y_true[0,0]  # numpy index selection
-    y_boxTrue_tleft = y_true[0,1]
-    boxTrue_width = y_true[0,2]
-    boxTrue_height = y_true[0,3]
-    area_boxTrue = (boxTrue_width * boxTrue_height)
-
-    # boxPred
-    x_boxPred_tleft = y_pred[0,0]
-    y_boxPred_tleft = y_pred[0,1]
-    boxPred_width = y_pred[0,2]
-    boxPred_height = y_pred[0,3]
-    area_boxPred = (boxPred_width * boxPred_height)
-
-
-    # calculate the bottom right coordinates for boxTrue and boxPred
-
-    # boxTrue
-    x_boxTrue_br = x_boxTrue_tleft + boxTrue_width
-    y_boxTrue_br = y_boxTrue_tleft + boxTrue_height # Version 2 revision
-
-    # boxPred
-    x_boxPred_br = x_boxPred_tleft + boxPred_width
-    y_boxPred_br = y_boxPred_tleft + boxPred_height # Version 2 revision
-
-
-    # calculate the top left and bottom right coordinates for the intersection box, boxInt
-
-    # boxInt - top left coords
-    x_boxInt_tleft = tf.maximum(x_boxTrue_tleft,x_boxPred_tleft)
-    y_boxInt_tleft = tf.maximum(y_boxTrue_tleft,y_boxPred_tleft) # Version 2 revision
-
-    # boxInt - bottom right coords
-    x_boxInt_br = tf.minimum(x_boxTrue_br,x_boxPred_br)
-    y_boxInt_br = tf.minimum(y_boxTrue_br,y_boxPred_br) 
-
-    # Calculate the area of boxInt, i.e. the area of the intersection 
-    # between boxTrue and boxPred.
-    # The np.max() function forces the intersection area to 0 if the boxes don't overlap.
-        
-        
-    # Version 2 revision
-    area_of_intersection = \
-      tf.maximum(0.0,(x_boxInt_br - x_boxInt_tleft)) * tf.maximum(0.0,(y_boxInt_br - y_boxInt_tleft))
-
-    iou = area_of_intersection / ((area_boxTrue + area_boxPred) - area_of_intersection)
-
-
-    # This must match the type used in py_func
-    iou = tf.cast(iou, tf.float32)
-        
-    # append the result to a list at the end of each loop
-    results.append(iou)
-    
-    # return the mean IoU score for the batch
-    return iou #K.mean(results)
 
 # small step size works best
-model.compile(optimizer=tf.keras.optimizers.Adam(lr=step_size),
+model.compile(optimizer=tf.keras.optimizers.SGD(lr=step_size),
               loss=YOLO_loss,
-              metrics=['accuracy', IOU_metric, 'mse', IOU3, YOLO_loss])
+              metrics=['accuracy', IOU_metric, 'mse'])
 
 #print(model.summary()) #see the shape of the model
 
