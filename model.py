@@ -40,7 +40,7 @@ lambda_coord = 5
 # Learning
 step_size = 0.00001
 BATCH_SIZE = 5
-num_epochs = 1
+num_epochs = 5
 
 # Saving
 shape_path = 'trained_model/model_shape.json'
@@ -198,9 +198,9 @@ model = tf.keras.Sequential([
     tf.keras.layers.Conv2D(1024, (3,3), padding='same', activation=tf.nn.relu),
 
     tf.keras.layers.Flatten(), #flatten images into array for the fully connnected layers
-    tf.keras.layers.Dense(256),
+    tf.keras.layers.Dense(1024),
     #tf.keras.layers.Dropout(0.5), # prevents overfitting for large number of epochs?
-    tf.keras.layers.Dense(512, activation=tf.keras.activations.linear),
+    tf.keras.layers.Dense(4096, activation=tf.keras.activations.linear),
     tf.keras.layers.Dense(4, activation=tf.nn.tanh) # 4 outputs: predict 4 points for a bounding box
 ])
 #TODO: try tanh activation instead of sigmoid

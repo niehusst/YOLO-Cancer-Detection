@@ -141,11 +141,11 @@ def main():
     
         # make a prediction on the loaded image
         output = model.predict(preprocessed_img, batch_size=1)
-    
+        print("unadjusted: {}".format(output[0]))
         # un-normalize prediction to get plotable points
         points = np.array(output[0]) * 512
         points = list(points.astype(np.int32))
-
+        print("adjusted: {}".format(points))
         # normalize image to prevent as much white-washing
         norm = normalize_image(img)
         
