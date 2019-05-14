@@ -43,8 +43,8 @@ BATCH_SIZE = 5
 num_epochs = 5
 
 # Saving
-shape_path = 'trained_model/model_shape.json'
-weight_path = 'trained_model/model_weights.h5'
+shape_path = 'trained_model/yolo_log/model_shape.json'
+weight_path = 'trained_model/yolo_log/model_weights.h5'
 
 # TensorBoard 
 tb_graph = False
@@ -125,7 +125,7 @@ the model to predict on them.
 # apply preprocessing functions
 points = map(normalize_points, points)
 imgs = map(path_to_image, img_paths)
-#imgs = map(normalize_image, imgs)
+imgs = map(normalize_image, imgs)
 
 # reshape input image data to 4D shape (as expected by the model)
 # and cast all data to np arrays (just in case)
@@ -201,9 +201,8 @@ model = tf.keras.Sequential([
     tf.keras.layers.Dense(1024),
     #tf.keras.layers.Dropout(0.5), # prevents overfitting for large number of epochs?
     tf.keras.layers.Dense(4096, activation=tf.keras.activations.linear),
-    tf.keras.layers.Dense(4, activation=tf.nn.tanh) # 4 outputs: predict 4 points for a bounding box
+    tf.keras.layers.Dense(4, activation=tf.nn.sigmoid) # 4 outputs: predict 4 points for a bounding box
 ])
-#TODO: try tanh activation instead of sigmoid
 #TODO: add tf.keras.layers.BatchNormalization layers before max pooling layers?
 
 """
@@ -220,6 +219,14 @@ x if x>0 else 0.1*x
 
 leaky_relu gets us worse accuracy than regular relu
 """
+
+def log_loss(y_true, y_pred):
+    iou = IOU_metric(y_true, y_pred)
+    epsilon = 0.00001
+    iou = tf.where(tf.equal(tf.zeros_like(iou), iou), epsilon, iou)
+    loss = tf.negative(tf.log(iou))
+    return loss
+    
 
 # custom loss function using aspects of relevant information from the YOLO paper
 def YOLO_loss(y_true, y_pred):
@@ -255,7 +262,7 @@ def YOLO_loss(y_true, y_pred):
                               tf.math.square(tf.math.subtract(y_Pheight, y_Theight)))
 
     loss = tf.math.multiply(tf.math.add(first_term, second_term), lambda_coord)
-    return loss #+ tf.keras.losses.mean_squared_error(y_true, y_pred)
+    return loss + log_loss(y_true, y_pred)
 
 def IOU_metric(y_true, y_pred):
     """
@@ -339,7 +346,7 @@ def IOU_metric(y_true, y_pred):
 # small step size works best
 model.compile(optimizer=tf.keras.optimizers.SGD(lr=step_size),
               loss=YOLO_loss,
-              metrics=['accuracy', IOU_metric, 'mse'])
+              metrics=['accuracy', IOU_metric, 'mse', log_loss, YOLO_loss])
 
 #print(model.summary()) #see the shape of the model
 

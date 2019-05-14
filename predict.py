@@ -15,8 +15,8 @@ import pandas as pd
 import time
 
 # Path variables 
-shape_path = 'trained_model/model_shape.json'
-weights_path = 'trained_model/model_weights.h5'
+shape_path = 'trained_model/yolo_loss/model_shape.json'
+weights_path = 'trained_model/yolo_loss/model_weights.h5'
 CSV_PATH = 'label_data/CCC_clean.csv'
 IMAGE_BASE_PATH = '../data/'
 
