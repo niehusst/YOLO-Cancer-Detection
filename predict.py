@@ -15,18 +15,19 @@ import pandas as pd
 import time
 
 # Path variables 
-shape_path = 'trained_model/yolo_loss/model_shape.json'
-weights_path = 'trained_model/yolo_loss/model_weights.h5'
+shape_path = 'trained_model/model_shape.json'
+weights_path = 'trained_model/model_weights.h5'
 CSV_PATH = 'label_data/CCC_clean.csv'
 IMAGE_BASE_PATH = '../data/'
 
 # Global variables
 img_dims = 512
-#/home/niehusst/vision262/project/YOLO/data/TCGA-61-2012/1.3.6.1.4.1.14519.5.2.1.6450.4007.336565074650874040486975138397/18
+
 
 def load_model(shape_file, weights_file):
     """
     Load a tensorflow/keras model from an HDF5 file found at provided path.
+
     @param path - path to valid HDF5 file of YOLO cancer detection model
     @return model - a fully trained tf/keras model
     """
@@ -44,6 +45,7 @@ def load_model(shape_file, weights_file):
 def is_dicom(im_path):
     """
     Check if the image specified by the path is a DICOM image.
+
     @param im_path - string path to an image file
     @return - boolean, True if is a dicom image, else False
     """
@@ -51,6 +53,9 @@ def is_dicom(im_path):
     path, ext = os.path.splitext(im_path)
     
     # if file extension is empty or is .dcm, assume DICOM file
+    # (we assume empty extension means DICOM because the format
+    # of the DICOM data we are using was saved with an empty file
+    # extension)
     if ext == ".dcm" or ext == "":
         return True
     else:
@@ -59,7 +64,8 @@ def is_dicom(im_path):
 def load_image(im_path):
     """
     Load an image from provided path. Loads both DICOM and more
-    common image formats.
+    common image formats into a numpy array.
+
     @param im_path - string path to the image file
     @return im - the image loaded as a numpy ndarray
     """
@@ -75,6 +81,7 @@ def load_image(im_path):
 def pre_process(img):
     """
     Takes an image and preprocesses it to fit in the model
+
     @param img - a numpy ndarray representing an image
     @return - a shaped and normalized, grayscale version of img
     """
@@ -85,8 +92,7 @@ def pre_process(img):
     # ensure image is grayscale (only has 1 channel)
     im_adjusted = im_adjusted.astype(np.float32)
     if len(im_adjusted.shape) >= 3:
-        # squash 3 channel image
-        print("squashing 3 channels")
+        # squash 3 channel image to grayscale
         im_adjusted = np.dot(im_adjusted[...,:3], [0.299, 0.587, 0.114])
     
     # normalize the image to a 0-1 range
@@ -103,6 +109,7 @@ def normalize_image(img):
     """
     Normalize an image to the range of 0-255. This may help reduce the white
     washing that occurs with displaying DICOM images with PIL.
+
     @param img - a numpy array representing an image
     @return normalized - a numpy array whose elements are all within the range 
                          of 0-255
@@ -133,35 +140,35 @@ def main():
 
     # iterate over all image paths
     for i in range(len(data_frame['imgPath'])):
-        # load image from argv
         img = load_image(IMAGE_BASE_PATH + data_frame['imgPath'][i])
     
         # ensure image fits model input dimensions
         preprocessed_img = pre_process(img)
     
-        # make a prediction on the loaded image
         output = model.predict(preprocessed_img, batch_size=1)
-        print("unadjusted: {}".format(output[0]))
+        
         # un-normalize prediction to get plotable points
         points = np.array(output[0]) * 512
         points = list(points.astype(np.int32))
-        print("adjusted: {}".format(points))
-        # normalize image to prevent as much white-washing
+        
+        # normalize image to prevent as much white-washing caused
+        # by PIL lib as possible
         norm = normalize_image(img)
         
         # draw bbox of predicted points
         im = Image.fromarray(norm).convert("RGB")#convert RGB for colored bboxes
         draw = ImageDraw.Draw(im)
-        draw.rectangle(points, outline='#ff0000')
+        draw.rectangle(points, outline='#ff0000') #red bbox
+        
         #draw bbox of ground truth
         true_points = [int(data_frame['start_x'][i]),
                        int(data_frame['start_y'][i]),
                        int(data_frame['end_x'][i]),
                        int(data_frame['end_y'][i])]
-        draw.rectangle(true_points, outline='#00ff00') 
+        draw.rectangle(true_points, outline='#00ff00') #green bbox
         
-        im.show() #TODO: PIL causes the display range to be bad
-        time.sleep(1) #sleep to let user close image
+        im.show()
+        time.sleep(1) #sleep to let user see/close image
         
 
 """
