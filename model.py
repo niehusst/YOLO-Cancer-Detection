@@ -236,7 +236,7 @@ def log_loss(y_true, y_pred):
     # from appearing in the loss computation
     iou = tf.where(tf.equal(tf.zeros_like(iou), iou), epsilon, iou)
     # negative log should act as a function that exponentially punishes
-    # boxes that have worse IOU (up to value of 
+    # boxes that have worse IOU (up to value of log(epsilon))
     loss = tf.negative(tf.log(iou))
     return loss
     
