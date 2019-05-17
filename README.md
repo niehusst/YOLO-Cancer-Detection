@@ -38,10 +38,10 @@ We have included the appropriate directory structure below. This will allow mode
 The data must be downloaded directly from [Kaggle](https://www.kaggle.com/kmader/crowds-cure-cancer-2017), where you need to create a username and password (if you don't already have one) in order to download the dataset. Once you have downloaded and unzipped the dataset, you will have the raw images and CSV data. We clean the CSV data down to only the necessary information using the `clean_data.py` script in the `label_data/` directory, which produces a new, clean CSV file which is used in the training and example usage usage of the model.
 
 ### Training the model
-To train the model, one can simply run `$ python model.py` at the command line. With the adjustable parameters at the top of the file, you can change some aspects of how the model trains very easily. Once the \
+To train the model, one can simply run `$ python model.py` at the command line. With the adjustable parameters at the top of the file, you can change some aspects of how the model trains very easily. As the model trains, (assuming you have the Tensorboard variables enabled in `model.py`) it will periodically save logged events to the `logs` directory which can be viewed using Tensorboard. Once the model is trained it will be saved to the `trained_model/` directory (note that this directory must exist prior to the model being saved there, as the write command will fail if the directory is not present). 
 
 ### Running a quick test
-To see the results of your saved model, simply run `$ python predict.py`.
+To see the results of your saved model, simply run `$ python predict.py`. This is a simple script that loads up the image data, CSV data, and a trained model from the `trained_model/` directory and allows you to visually compare the predicted and ground truth bounding boxes on each image in the dataset.
 
 ## Authors
 * **Liam Niehus-Staab** - [niehusst](https://github.com/niehusst)
