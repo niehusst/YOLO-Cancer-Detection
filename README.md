@@ -1,19 +1,40 @@
 # YOLO-Cancer-Detection
 
 An implementation of the YOLO algorithm trained to spot tumors in DICOM images. The model is trained on the "Crowds Cure Cancer" dataset, which only contains images that DO have tumors; this model will always predict a bounding box for a tumor (even if one is not present).
+**NOTE:** Our final model didn't quite work; we hypothesize that the quality of the data may be one of the culprits in our model's inability to learn how to detect the tumors with any accuracy.
 
 ### Getting Started
 We recommend using a virtual environment to ensure your dependencies are up-to-date and freshly installed. From there, you can use `pip` to install all the dependencies in the `deps.txt` file (this can be done quickly with `pip install -r deps.txt`).
 
-### Downloading the data
-Run the following command from your terminal to download the data.
-`$ wget https://www.kaggle.com/kmader/crowds-cure-cancer-2017/downloads/crowds-cure-cancer-2017.zip/3`
+### Downloading and cleaning the data
+The data must be downloaded directly from [Kaggle](https://www.kaggle.com/kmader/crowds-cure-cancer-2017), where you need to create a username and password (if you don't already have one) in order to download the dataset. Once you have downloaded and unzipped the dataset, you will have the raw images and CSV data. We clean the CSV data down to only the necessary information using the `clean_data.py` script in the `label_data/` directory, which produces a new, clean CSV file which is used in the training and example usage usage of the model.
 
 ### Training the model
-`$ python model.py`
+To train the model, one can simply run the `model.py` script. With the adjustable parameters at the top of the file, you can change some aspects of how the model trains very easily. Once the 
+```
+| YOLO/
+|---| crowds-cure-cancer-2017/ ## <-- result of Kaggle download
+|---|---| annotated_dicoms.zip
+|---|---| compressed_stacks.zip
+|---|---| CrowdsCureCancer2017Annotations.csv ## <---- @move this file to YOLO/YOLO-Cancer-Detection/label_data
+|---| data/
+|---|---| TCGA-09-0364
+|---|---| ...
+## put the data files into this 'data/' directory
+|---|---| ...
+|---|---| TCGA-OY-A56Q
+|---| YOLO-Cancer-Detection/
+|---|---| label_data/
+|---|---|---| clean_data.py
+|---|---|---| CCC_clean.py
+|---|---|---| CrowdsCureCancer2017Annotations.csv ## <---- @Here
+|---|---| model.py
+|---|---| predict.py
+|---|---| deps.txt
+|---|---| README.md
+```
+### Running a quick test
 
-### Making predictions
-`$ python predict.py`
 
 ## Authors
 * **Liam Niehus-Staab** - [niehusst](https://github.com/niehusst)
