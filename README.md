@@ -5,6 +5,16 @@ An implementation of the YOLO algorithm trained to spot tumors in DICOM images. 
 ### Getting Started
 We recommend using a virtual environment to ensure your dependencies are up-to-date and freshly installed. From there, you can use `pip` to install all the dependencies in the `deps.txt` file (this can be done quickly with `pip install -r deps.txt`).
 
+### Downloading the data
+Run the following command from your terminal to download the data.
+`$ wget https://www.kaggle.com/kmader/crowds-cure-cancer-2017/downloads/crowds-cure-cancer-2017.zip/3`
+
+### Training the model
+`$ python model.py`
+
+### Making predictions
+`$ python predict.py`
+
 ## Authors
 * **Liam Niehus-Staab** - [niehusst](https://github.com/niehusst)
 * **Eli Salm** - [salmeli](https://github.com/salmeli)
